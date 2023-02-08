@@ -2,13 +2,11 @@ import numpy as np
 from sklearn.decomposition import PCA
 import matplotlib.pyplot as plt
 from typing import Tuple, Optional, TypedDict, List
-from RPCA_3 import RPCA_OG
+from RPCA_3 import EPCA
 import random
 import time
 from tensorly.decomposition import robust_pca
-import threading
 from multiprocessing import Pool, TimeoutError
-from mnist import MNIST
 from scipy.signal import savgol_filter
 
 
@@ -103,7 +101,7 @@ def run_epca(
         runtime (float): Runtime of EPCA
     """
     start_time = time.time()
-    epca = RPCA_OG(
+    epca = EPCA(
         num_components=n_components,
         num_samples=num_samples,
         sample_size=sample_size,
@@ -275,6 +273,7 @@ def run_all_pca_methods(
         pca_performance, pca_runtime = res1.get(timeout=timeout)
     except TimeoutError:
         p.terminate()
+        print("PCA timed out")
         pca_performance = "NaN"
         pca_runtime = "NaN"
 
@@ -297,6 +296,7 @@ def run_all_pca_methods(
         epca_performance, epca_runtime = res2.get(timeout=timeout)
     except TimeoutError:
         p.terminate()
+        print("EPCA timed out")
         epca_performance = "NaN"
         epca_runtime = "NaN"
 
@@ -321,6 +321,7 @@ def run_all_pca_methods(
         rpca_performance, rpca_runtime = res3.get(timeout=timeout)
     except TimeoutError:
         p.terminate()
+        print("RPCA timed out")
         rpca_performance = "NaN"
         rpca_runtime = "NaN"
 
