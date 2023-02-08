@@ -41,13 +41,13 @@ def run_pca(
         images (np.ndarray): Data.
         true_components (np.ndarray): True PCA components to compare against.
         num_components (int): Number of components to compare against
-
+    Kwargs:
         smoothing (bool): Whether or not to smooth the output
         window_length (int):
         poly_order (int):
     Returns
-        pca: PCA class
-        runtime (float)
+        pca_performance (List[float]): Accuracy of predicted PCA and true PCA components
+        runtime (float): Runtime of PCA
     """
     start_time = time.time()
 
@@ -99,9 +99,8 @@ def run_epca(
         window_length (int): Must be odd. Window length for smoothing.
         poly_order (int): Polynomial order for smoothing.
     Returns:
-        centers (np.ndarray): Calculated principal components.
-        cluster_labels (np.ndarray): Assignment of each calculated PC to a cluster.
-        runtime (float)
+        rpca_performance (List[float]): Accuracy of predicted EPCA and true PCA components
+        runtime (float): Runtime of EPCA
     """
     start_time = time.time()
     epca = RPCA_OG(
@@ -140,6 +139,13 @@ def run_rpca(
         reg_J (float):
         learning_rate (float):
         n_iter_max (int):
+    Kwargs:
+        smoothing (bool):
+        window_length (int):
+        poly_order (int):
+    Returns:
+        rpca_performance (List[float]): Accuracy of predicted RPCA and true PCA components.
+        rpca_runtime (float): Runtime of RPCA
     """
     start_time = time.time()
     low_rank_part, _ = robust_pca(
@@ -183,7 +189,7 @@ def sp_noise(image: np.ndarray, prob: float) -> np.ndarray:
         image (np.ndarray): Data
         prob (float): Probability of the noise
     Returns:
-        output (np.ndarray): Data with added noise.
+        output (np.ndarray): Data with added noise
     """
 
     assert 0 <= prob <= 1, "Probability must be in [0,1]."
@@ -237,9 +243,10 @@ def run_all_pca_methods(
     Run traditional PCA, ensemble PCA, and robust PCA.
 
     Args:
-        true_components (np.ndarray): The true PCA components.
+        true_components (np.ndarray): The true PCA components
         data (np.ndarray)
-        num_components (int): The number of components to search for.
+        timeout (float): Number of seconds after which to timeout the function run
+        num_components (int): The number of components to search for
         epca_args (TypedDict): Dictionary containing necessary arguments for ensemble PCA
         rpca_args (TypedDict): Dictionary containing necessary arguments for robust PCA
     Returns:
@@ -341,6 +348,18 @@ def write_to_file(
 ):
     """
     Write results of running different versions of PCA on corrupted data (salt and pepper noise and white noise) to a file.
+
+    Args:
+        original_data (np.ndarray): Data to add noise to and run analysis on
+        num_components (int): Number of components to analyze
+        timeout (float): Number of seconds after which to timeout a function run
+        pca_args (TypedDict): Optional argumnets for PCA
+        epca_args (TypedDict): Optional arguments for EPCA
+        rpca_args (TypedDict): Optional arguments for RPCA
+        filename (str): Filename to which to write the output
+        sp_probability (float): Probability of salt and pepper noise
+        uniform_white_variance (float): Variance for uniform white noise
+        normal_white_variance (float): Variance for normal white noise
     """
     n = original_data.shape[0]
 
