@@ -1,3 +1,4 @@
+"""Run analysis on wave data."""
 import numpy as np
 from helper_functions import write_to_file
 

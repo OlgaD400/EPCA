@@ -1,3 +1,5 @@
+"""Run analysis on MNIST data."""
+
 from mnist import MNIST
 import numpy as np
 from helper_functions import write_to_file
