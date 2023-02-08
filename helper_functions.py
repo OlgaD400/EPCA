@@ -7,44 +7,9 @@ import random
 import time
 from tensorly.decomposition import robust_pca
 import threading
-
-TIMER = 120
-
-
-class TimeoutError(Exception):
-    pass
-
-
-class InterruptableThread(threading.Thread):
-    def __init__(self, func, *args, **kwargs):
-        threading.Thread.__init__(self)
-        self._func = func
-        self._args = args
-        self._kwargs = kwargs
-        self._result = None
-
-    def run(self):
-        self._result = self._func(*self._args, **self._kwargs)
-
-    @property
-    def result(self):
-        return self._result
-
-
-class timeout(object):
-    def __init__(self, sec):
-        self._sec = sec
-
-    def __call__(self, f):
-        def wrapped_f(*args, **kwargs):
-            it = InterruptableThread(f, *args, **kwargs)
-            it.start()
-            it.join(self._sec)
-            if not it.is_alive():
-                return it.result
-            raise TimeoutError("execution expired")
-
-        return wrapped_f
+from multiprocessing import Pool, TimeoutError
+from mnist import MNIST
+from scipy.signal import savgol_filter
 
 
 def plot_components(components: np.ndarray, imsize: Optional[Tuple] = None) -> None:
@@ -66,13 +31,20 @@ def plot_components(components: np.ndarray, imsize: Optional[Tuple] = None) -> N
     return None
 
 
-@timeout(TIMER)
-def run_pca(images: np.ndarray):
+def run_pca(
+    images: np.ndarray, true_components: np.ndarray, num_components: int, **kwargs
+):
     """
     Run standard princpal component analysis on given data.
 
     Args:
         images (np.ndarray): Data.
+        true_components (np.ndarray): True PCA components to compare against.
+        num_components (int): Number of components to compare against
+
+        smoothing (bool): Whether or not to smooth the output
+        window_length (int):
+        poly_order (int):
     Returns
         pca: PCA class
         runtime (float)
@@ -85,13 +57,30 @@ def run_pca(images: np.ndarray):
 
     runtime = time.time() - start_time
 
-    return pca, np.round(runtime, 3)
+    final_components = pca.components_[:num_components]
+
+    smoothing = kwargs.pop("smoothing", False)
+    if smoothing is True:
+        window_length = kwargs.pop("window_length", 51)
+        poly_order = kwargs.pop("poly_order", 3)
+
+        assert window_length % 2 == 1, "Window length must be odd"
+
+        final_components = savgol_filter(
+            pca.components_[:num_components],
+            window_length=window_length,
+            polyorder=poly_order,
+        )
+
+    pca_performance = score_performance(true_components, final_components)
+
+    return pca_performance, np.round(runtime, 3)
 
 
-@timeout(TIMER)
 def run_epca(
     images: np.ndarray,
     n_components: int,
+    true_components: np.ndarray,
     num_samples: int = 100,
     sample_size: int = 10,
     smoothing: bool = False,
@@ -127,16 +116,20 @@ def run_epca(
 
     runtime = time.time() - start_time
 
-    return centers, cluster_labels, np.round(runtime, 3)
+    epca_performance = score_performance(true_components, centers)
+
+    return epca_performance, np.round(runtime, 3)
 
 
-@timeout(TIMER)
 def run_rpca(
     images: np.ndarray,
+    true_components: np.ndarray,
+    num_components: int,
     reg_E: float = 1.0,
     reg_J: float = 1.0,
     learning_rate: float = 1.1,
     n_iter_max: int = 50,
+    **kwargs
 ):
     """
     Run robust PCA.
@@ -162,7 +155,24 @@ def run_rpca(
     rpca = PCA()
     rpca.fit(low_rank_part)
 
-    return rpca, np.round(runtime, 3)
+    final_components = rpca.components_[:num_components]
+
+    smoothing = kwargs.pop("smoothing", False)
+    if smoothing is True:
+        window_length = kwargs.pop("window_length", 51)
+        poly_order = kwargs.pop("polyorder", 3)
+
+        assert window_length % 2 == 1, "Window length must be odd"
+
+        final_components = savgol_filter(
+            rpca.components_[:num_components],
+            window_length=window_length,
+            polyorder=poly_order,
+        )
+
+    rpca_performance = score_performance(true_components, final_components)
+
+    return rpca_performance, np.round(runtime, 3)
 
 
 def sp_noise(image: np.ndarray, prob: float) -> np.ndarray:
@@ -217,7 +227,9 @@ def score_performance(
 def run_all_pca_methods(
     true_components: np.ndarray,
     data: np.ndarray,
+    timeout: float,
     num_components: int,
+    pca_args: TypedDict,
     epca_args: TypedDict,
     rpca_args: TypedDict,
 ):
@@ -239,60 +251,71 @@ def run_all_pca_methods(
         rpca_performance (List[float]): List containing difference between true components and those predicted by RPCA
 
     """
-    try:
-        pca, pca_runtime = run_pca(images=data)
-    except TimeoutError:
-        print("PCA timeout")
-        pca = None
-        pca_runtime = "NaN"
-        pass
 
+    p = Pool(1)
     try:
-        epca_centers, _, epca_runtime = run_epca(
-            images=data,
-            n_components=num_components,
-            num_samples=epca_args.get("num_samples", 100),
-            sample_size=epca_args.get("sample_size", 10),
-            smoothing=epca_args.get("smoothing", False),
-            window_length=epca_args.get("window_length", 51),
-            poly_order=epca_args.get("poly_order", 3),
+        res1 = p.apply_async(
+            run_pca,
+            kwds={
+                "images": data,
+                "true_components": true_components,
+                "num_components": num_components,
+                "smoothing": pca_args.get("smoothing", False),
+                "window_length": pca_args.get("window_length", 51),
+                "poly_order": pca_args.get("poly_order", 3),
+            },
         )
+        pca_performance, pca_runtime = res1.get(timeout=timeout)
     except TimeoutError:
-        print("Ensemble PCA timeout")
-        epca_centers = None
+        p.terminate()
+        pca_performance = "NaN"
+        pca_runtime = "NaN"
+
+    p = Pool(1)
+    try:
+        res2 = p.apply_async(
+            run_epca,
+            kwds={
+                "images": data,
+                "true_components": true_components,
+                "n_components": num_components,
+                "n_components": num_components,
+                "num_samples": epca_args.get("num_samples", 100),
+                "sample_size": epca_args.get("sample_size", 10),
+                "smoothing": epca_args.get("smoothing", False),
+                "window_length": epca_args.get("window_length", 51),
+                "poly_order": epca_args.get("poly_order", 3),
+            },
+        )
+        epca_performance, epca_runtime = res2.get(timeout=timeout)
+    except TimeoutError:
+        p.terminate()
+        epca_performance = "NaN"
         epca_runtime = "NaN"
 
+    p = Pool(1)
     try:
-        rpca, rpca_runtime = run_rpca(
-            images=data,
-            reg_E=rpca_args.get("reg_E", 1.0),
-            reg_J=rpca_args.get("reg_J", 1.0),
-            learning_rate=rpca_args.get("learning_rate", 1.1),
-            n_iter_max=rpca_args.get("n_iter_max", 50),
+        res3 = p.apply_async(
+            run_rpca,
+            kwds={
+                "images": data,
+                "true_components": true_components,
+                "num_components": num_components,
+                "smoothing": rpca_args.get("smoothing", False),
+                "reg_E": rpca_args.get("reg_E", 1.0),
+                "reg_J": rpca_args.get("reg_J", 1.0),
+                "learning_rate": rpca_args.get("learning_rate", 1.1),
+                "n_iter_max": rpca_args.get("n_iter_max", 50),
+                "smoothing": rpca_args.get("smoothing", False),
+                "window_legnth": rpca_args.get("window_length", 51),
+                "poly_order": rpca_args.get("poly_order", 3),
+            },
         )
+        rpca_performance, rpca_runtime = res3.get(timeout=timeout)
     except TimeoutError:
-        print("Robust PCA timeout")
-        rpca = None
-        rpca_runtime = "NaN"
-
-    if pca is not None:
-        pca_performance = score_performance(
-            true_components, pca.components_[:num_components]
-        )
-    else:
-        pca_performance = "NaN"
-
-    if epca_centers is not None:
-        epca_performance = score_performance(true_components, epca_centers)
-    else:
-        epca_performance = "NaN"
-
-    if rpca is not None:
-        rpca_performance = score_performance(
-            true_components, rpca.components_[:num_components]
-        )
-    else:
+        p.terminate()
         rpca_performance = "NaN"
+        rpca_runtime = "NaN"
 
     return (
         pca_runtime,
@@ -307,6 +330,8 @@ def run_all_pca_methods(
 def write_to_file(
     original_data: np.ndarray,
     num_components: int,
+    timeout: float,
+    pca_args: TypedDict,
     epca_args: TypedDict,
     rpca_args: TypedDict,
     filename: str,
@@ -372,6 +397,8 @@ def write_to_file(
             true_components=pca.components_[:num_components],
             data=data,
             num_components=num_components,
+            timeout=timeout,
+            pca_args=pca_args,
             epca_args=epca_args,
             rpca_args=rpca_args,
         )
