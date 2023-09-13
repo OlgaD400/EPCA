@@ -1,16 +1,17 @@
-import numpy as np
-from sklearn.decomposition import PCA
-import matplotlib.pyplot as plt
-from typing import Tuple, Optional, TypedDict, List
-from RPCA_3 import EPCA
+"""Functions for plotting and running experiments."""
 import random
 import time
-from tensorly.decomposition import robust_pca
+from typing import Tuple, Optional, TypedDict, List
 from multiprocessing import Pool, TimeoutError
+from tensorly.decomposition import robust_pca
+from sklearn.decomposition import PCA
 from scipy.signal import savgol_filter
+import numpy as np
+import matplotlib.pyplot as plt
+from EPCA import EPCA
 
 
-def plot_components(components: np.ndarray, imsize: Optional[Tuple] = None) -> None:
+def plot_components(components: np.ndarray, imsize: Optional[Tuple] = None):
     """
     Visualize PCA components:
 
@@ -26,17 +27,26 @@ def plot_components(components: np.ndarray, imsize: Optional[Tuple] = None) -> N
             plt.figure()
             plt.imshow(component.reshape(imsize))
 
-    return None
 
+def match_components(true_components: np.ndarray, pred_components: np.ndarray) -> dict:
+    """
+    Match ture and predicted components to one another.
 
-def match_components(true_components: np.ndarray, pred_components: np.ndarray):
+    Args:
+        true_components (np.ndarray): The true components.
+        pred_components (np.ndarray): The predicted components.
+    Returns:
+        pc_map (dict): Dictionary with keys corresponding to indices of
+        true components and values corresponding to indices
+        of predicted components
+    """
     predicted = []
 
-    for true_index, component in enumerate(true_components):
+    for _, component in enumerate(true_components):
         difference = np.argsort(np.linalg.norm(component - pred_components, 2, axis=1))
-        for i in range(len(difference)):
-            if difference[i] not in predicted:
-                predicted.append(difference[i])
+        for _, diff in enumerate(difference):
+            if diff not in predicted:
+                predicted.append(diff)
                 break
 
     pc_map = dict(zip(np.arange(len(true_components)), predicted))
@@ -89,9 +99,9 @@ def run_pca(images: np.ndarray, num_components: int, **kwargs):
 
 def run_epca(
     images: np.ndarray,
-    n_components: int,
-    num_samples: int = 100,
-    sample_size: int = 10,
+    num_components: int,
+    num_bags: int = 100,
+    bag_size: int = 10,
     smoothing: bool = False,
     window_length: int = 51,
     poly_order: int = 3,
@@ -112,18 +122,18 @@ def run_epca(
     """
     start_time = time.time()
     epca = EPCA(
-        num_components=n_components,
-        num_samples=num_samples,
-        sample_size=sample_size,
+        num_components=num_components,
+        num_bags=num_bags,
+        bag_size=bag_size,
         smoothing=smoothing,
         window_length=window_length,
         poly_order=poly_order,
     )
-    epca.run_EPCA(images)
+    epca.run_epca(images)
 
     runtime = time.time() - start_time
 
-    return epca.centers, epca.avg_singular_values, np.round(runtime, 3)
+    return epca.centers, epca.avg_explained_variance, np.round(runtime, 3)
 
 
 def run_rpca(images: np.ndarray, num_components: int, **kwargs):
@@ -207,6 +217,7 @@ def sparse_noise(image: np.ndarray, prob: float, num: float):
     Args:
         image (np.ndarray): Data
         prob (float): Probability of the noise
+        num (float): Number to replace data entries
     Returns:
         output (np.ndarray): Data with added noise
     """
@@ -224,6 +235,7 @@ def sparse_noise(image: np.ndarray, prob: float, num: float):
                 output[i][j] = image[i][j]
     return output
 
+
 def sparse_noise_static(image: np.ndarray, prob: float, num: float):
     """
     Add salt and pepper noise to data
@@ -235,16 +247,21 @@ def sparse_noise_static(image: np.ndarray, prob: float, num: float):
     """
 
     assert 0 <= prob <= 1, "Probability must be in [0,1]."
-    
-    m,n = image.shape
-    entries = np.random.choice(m*n, np.round(prob*m*n), replace = False)
-    x = entries//m -1
-    y = entries%m -1
+
+    data_samples, data_dimension = image.shape
+    entries = np.random.choice(
+        data_samples * data_dimension,
+        np.round(prob * data_samples * data_dimension),
+        replace=False,
+    )
+    x_coord = entries // data_samples - 1
+    y_coord = entries % data_samples - 1
 
     output = image.copy()
-    output[x,y] = num
+    output[x_coord, y_coord] = num
 
     return output
+
 
 def score_performance(
     true_components: np.ndarray,
@@ -310,9 +327,9 @@ def run_all_pca_methods(
 
     """
 
-    p = Pool(1)
+    pool = Pool(1)
     try:
-        res1 = p.apply_async(
+        res1 = pool.apply_async(
             run_pca,
             kwds={
                 "images": data,
@@ -328,22 +345,21 @@ def run_all_pca_methods(
         pca_final_svs = [pca_svs[pca_map[i]] for i in range(num_components)]
 
     except TimeoutError:
-        p.terminate()
+        pool.terminate()
         print("PCA timed out")
         pca_performance = "NaN"
         pca_runtime = "NaN"
         pca_final_svs = "NaN"
 
-    p = Pool(1)
+    pool = Pool(1)
     try:
-        res2 = p.apply_async(
+        res2 = pool.apply_async(
             run_epca,
             kwds={
                 "images": data,
-                "n_components": num_components,
-                "n_components": num_components,
-                "num_samples": epca_args.get("num_samples", 100),
-                "sample_size": epca_args.get("sample_size", 10),
+                "num_components": num_components,
+                "num_bags": epca_args.get("num_bags", 100),
+                "bag_size": epca_args.get("bag_size", 10),
                 "smoothing": epca_args.get("smoothing", False),
                 "window_length": epca_args.get("window_length", 51),
                 "poly_order": epca_args.get("poly_order", 3),
@@ -355,15 +371,15 @@ def run_all_pca_methods(
         epca_final_svs = [epca_svs[epca_map[i]] for i in range(num_components)]
 
     except TimeoutError:
-        p.terminate()
+        pool.terminate()
         print("EPCA timed out")
         epca_performance = "NaN"
         epca_runtime = "NaN"
         epca_final_svs = "NaN"
 
-    p = Pool(1)
+    pool = Pool(1)
     try:
-        res3 = p.apply_async(
+        res3 = pool.apply_async(
             run_rpca,
             kwds={
                 "images": data,
@@ -373,7 +389,6 @@ def run_all_pca_methods(
                 "reg_J": rpca_args.get("reg_J", 1.0),
                 "learning_rate": rpca_args.get("learning_rate", 1.1),
                 "n_iter_max": rpca_args.get("n_iter_max", 50),
-                "smoothing": rpca_args.get("smoothing", False),
                 "window_legnth": rpca_args.get("window_length", 51),
                 "poly_order": rpca_args.get("poly_order", 3),
             },
@@ -384,7 +399,7 @@ def run_all_pca_methods(
         rpca_final_svs = [rpca_svs[rpca_map[i]] for i in range(num_components)]
 
     except TimeoutError:
-        p.terminate()
+        pool.terminate()
         print("RPCA timed out")
         rpca_performance = "NaN"
         rpca_runtime = "NaN"
@@ -437,12 +452,12 @@ def write_to_file(
         outlier_scale (float): Scale of the outliers.
         outlier_fraction (float): Fraction of outliers to add to the data.
     """
-    n = original_data.shape[0]
+    data_samples = original_data.shape[0]
 
-    f = open(filename, "w")
+    file = open(filename, "w")
 
     pca = PCA(n_components=num_components)
-    pca.fit(original_data.reshape((n, -1)))
+    pca.fit(original_data.reshape((data_samples, -1)))
     sv_1 = pca.singular_values_[0]
 
     # Find how many components capture at least 90% of the information
@@ -458,7 +473,7 @@ def write_to_file(
 
     # Add sparse salt and pepper noise
     data_types = ["original"]
-    data_list = [original_data.reshape((n, -1))]
+    data_list = [original_data.reshape((data_samples, -1))]
 
     if sparse is True:
         print("Creating sparse salt and pepper noise")
@@ -466,7 +481,7 @@ def write_to_file(
             original_data, prob=sp_probability, num=np.max(original_data) * 2
         )
 
-        sp_data = sp_data.reshape((n, -1))
+        sp_data = sp_data.reshape((data_samples, -1))
         print("Sparse salt and pepper noise created")
         data_types.append("sparse s&p")
         data_list.append(sp_data)
@@ -480,7 +495,7 @@ def write_to_file(
         )
         # if scaling is True:
         #     uniform_white_data = scaler.fit_transform(uniform_white_data)
-        uniform_white_data = uniform_white_data.reshape((n, -1))
+        uniform_white_data = uniform_white_data.reshape((data_samples, -1))
         print("Created uniform white noise")
         data_types.append("uniform white")
         data_list.append(uniform_white_data)
@@ -494,7 +509,7 @@ def write_to_file(
         )
         # if scaling is True:
         #     normal_white_data = scaler.fit_transform(normal_white_data)
-        normal_white_data = normal_white_data.reshape((n, -1))
+        normal_white_data = normal_white_data.reshape((data_samples, -1))
 
         print("Created normal white noise")
         data_types.append("normal white")
@@ -503,14 +518,16 @@ def write_to_file(
     if outliers is True:
         # Add outliers
         print("Adding ", outlier_fraction, "percent outliers")
-        ind = np.random.choice(n, int(np.round(n * outlier_fraction)), replace=False)
+        ind = np.random.choice(
+            data_samples, int(np.round(data_samples * outlier_fraction)), replace=False
+        )
         outlier_data = original_data.copy()
         outlier_data[ind] = outlier_data[ind] * outlier_scale
-        outlier_data = outlier_data.reshape((n, -1))
+        outlier_data = outlier_data.reshape((data_samples, -1))
         data_types.append("outliers")
         data_list.append(outlier_data)
 
-    f.write(
+    file.write(
         "data; pca_runtime; epca_runtime; rpca_runtime; pca_performance; epca_performance; rpca_performance; pca_performance_svs; epca_performance_svs; rpca_performance_svs\n"
     )
 
@@ -536,7 +553,7 @@ def write_to_file(
             rpca_args=rpca_args,
         )
 
-        f.write(
+        file.write(
             "%s; %s; %s; %s; %s; %s; %s; %s; %s; %s \n"
             % (
                 data_types[index],
@@ -552,5 +569,5 @@ def write_to_file(
             )
         )
 
-    f.close()
+    file.close()
     return None

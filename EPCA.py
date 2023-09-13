@@ -29,6 +29,12 @@ class EPCA:
             smoothing (bool): Whether to smooth the output PCA modes.
             window_length (Optional[int]): Optional parameter for use in smoothing.
             poly_order (Optional[int]): Optional parameter for use in smoothing.
+        Attributes:
+            signed_vectors (np.ndarray): EPCA modes stacked along with
+            their reflections.
+            explained_variance (np.ndarray): Explained variance of each
+            of the EPCA modes. Equal to num_components largest eigenvalues of
+            the covariance matrix.
         """
         self.num_components = num_components
         self.num_bags = num_bags
@@ -36,6 +42,11 @@ class EPCA:
         self.smoothing = smoothing
         self.window_length = window_length
         self.poly_order = poly_order
+        self.centers = None
+        self.labels = None
+        self.avg_explained_variance = None
+        self.signed_vectors = None
+        self.explained_variance = None
         return None
 
     def epca_bagging(self, data: np.ndarray):
@@ -77,7 +88,7 @@ class EPCA:
 
         # Rather than arbitrarily aligning, stack all the vectors and their reflectiobs
         signed_vectors = np.vstack((pca_vectors, pca_vectors * -1))
-        final_explained_variance = np.hstack((explained_variance, explained_variance))
+        self.explained_variance = np.hstack((explained_variance, explained_variance))
 
         if self.smoothing is True:
             signed_vectors = savgol_filter(
@@ -86,13 +97,11 @@ class EPCA:
                 polyorder=self.poly_order,
             )
 
-        final_signed_vectors = (
+        self.signed_vectors = (
             signed_vectors / np.linalg.norm(signed_vectors, 2, axis=1)[..., np.newaxis]
         )
 
-        return final_signed_vectors, final_explained_variance
-
-    def epca_clustering(self, signed_vectors, explained_variance):
+    def epca_clustering(self):
         """
         Use k-means to cluster the EPCA modes from the bagging procedure.
 
@@ -111,22 +120,22 @@ class EPCA:
                 associated with each of the EPCA mode clusters.
         """
         kmeans = KMeans(n_clusters=2 * self.num_components, n_init=10).fit(
-            signed_vectors
+            self.signed_vectors
         )
 
-        centers = (
+        self.centers = (
             kmeans.cluster_centers_
             / np.linalg.norm(kmeans.cluster_centers_, 2, axis=1)[..., np.newaxis]
         )
 
-        labels = kmeans.labels_
+        self.labels = kmeans.labels_
 
-        avg_explained_variance = []
+        self.avg_explained_variance = []
         for unique_label in np.unique(kmeans.labels_):
             label = np.where(kmeans.labels_ == unique_label)[0]
-            avg_explained_variance.append(np.average(explained_variance[label]))
-
-        return centers, labels, avg_explained_variance
+            self.avg_explained_variance.append(
+                np.average(self.explained_variance[label])
+            )
 
     def run_epca(self, data: np.ndarray):
         """
@@ -149,12 +158,8 @@ class EPCA:
                 self.window_length <= data_dimension
             ), "Window length must be less than dimension of data"
 
-        signed_vectors, explained_variance = self.epca_bagging(data=data)
-        centers, labels, avg_explained_variance = self.epca_clustering(
-            signed_vectors=signed_vectors, explained_variance=explained_variance
-        )
-
-        return centers, labels, avg_explained_variance
+        self.epca_bagging(data=data)
+        self.epca_clustering()
 
     def return_unique_vectors(
         self, centers: np.ndarray, tol: float = 1e-4
