@@ -1,12 +1,17 @@
 import numpy as np
-from sklearn.decomposition import PCA
+from sklearn.decomposition import PCA, KernelPCA
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.metrics import pairwise_distances
 from sklearn.cluster import KMeans
 from sklearn.cluster import DBSCAN
+from rtkm import RTKM
 from collections import Counter
 from scipy.signal import savgol_filter
-from typing import Optional
+from typing import Tuple, List
+from multiprocessing import Pool, Process
+
+from sklearn.metrics.pairwise import euclidean_distances
+from sklearn.preprocessing import KernelCenterer
 
 from rtkm import RTKM
 
@@ -158,7 +163,6 @@ class RPCA_5:
         inlier_datasets = []
 
         for j in range(self.num_components):
-
             vectors_j = pca_vectors[j, :, :].T
 
             # average the vectors together once they're sign aligned
@@ -216,7 +220,6 @@ class RANSAC_RPCA:
         self.num_components = num_components
 
     def run_rpca(self, data, threshold, subsets):
-
         n, m = data.shape
         pca = PCA(n_components=self.num_components)
 
@@ -241,7 +244,6 @@ class RANSAC_RPCA:
             # store these components -- look into bootstrapping uncertainty intervals
 
             for point in maybe_inliers:
-
                 pca.fit(np.vstack((data[remaining_data], data[point])))
                 remaining_model = pca.components_
                 sim = np.around(cosine_similarity(maybe_model, remaining_model), 3)
@@ -303,18 +305,18 @@ class RANSAC_RPCA:
         return predicted_model, total_outliers
 
 
-class RPCA_OG:
+class EPCA:
     def __init__(
         self,
         num_components: int,
         num_samples: int,
         sample_size: int,
-        smoothing=True,
+        smoothing=False,
         window_length: int = 51,
         poly_order: int = 3,
     ):
         """
-        Initialize RPCA process.
+        Initialize EPCA process.
 
         Inputs:
         data (np.ndarray): Data matrix of size n_samples, m_features
@@ -328,9 +330,219 @@ class RPCA_OG:
         self.smoothing = smoothing
         self.window_length = window_length
         self.poly_order = poly_order
+        self.centers = None
+        self.labels = None
+        self.signed_vectors = None
+        self.singular_values = None
+        self.avg_singular_values = None
+        self.pca = PCA(n_components=self.num_components)
         return None
 
-    def run_RPCA(self, data: np.ndarray):
+    def PPCA(self, data: np.ndarray, num_components, tol=1e-3, max_iter=1000):
+        n, m = data.shape
+        S = np.cov(data.T, bias=True)
+
+        # What should we iniitalize W and sigma as?????
+        W = np.random.rand(m, num_components)
+        sigma = 1
+        iter = 0
+
+        error = 1 + 1e-3
+        while error > tol:
+            M = W @ W.T + sigma * np.identity(num_components)
+            W_new = (
+                S
+                @ W
+                @ np.linalg.inv(
+                    sigma * np.identity(num_components) + np.linalg.inv(M) @ W.T @ S @ W
+                )
+            )
+            sigma_new = 1 / m * np.trace(S - S @ W @ np.linalg.inv(M) @ W_new.T)
+
+            error = np.linalg.norm(W - W_new) + np.linalg.norm(sigma_new - sigma)
+
+            W = np.copy(W_new)
+            sigma = np.copy(sigma_new)
+
+            if iter == max_iter:
+                break
+
+            iter += 1
+        return W, sigma
+
+    def EPCA_bagging_parallel(self, data: np.ndarray):
+        # requires a self.pca in the init in order to run
+        self.pca.fit(data)
+        return self.pca.components_
+
+    def EPCA_bagging_parallel_queue(self, data: np.ndarray, q):
+        self.pca.fit(data)
+        q.put(self.pca.components_)
+        return None
+
+    def EPCA_bagging(self, data: np.ndarray):
+        n, m = data.shape
+        pca_vectors = np.zeros((self.num_components * self.num_samples, m))
+        singular_values = np.zeros(self.num_components * self.num_samples)
+
+        pca = PCA(n_components=self.num_components)
+
+        # run PCA num_samples times
+        for i in range(self.num_samples):
+            subset = np.random.choice(n, self.sample_size, replace=True)
+            pca.fit(data[subset, :])
+
+            pca_vectors[
+                i * self.num_components : (i + 1) * self.num_components, :
+            ] = pca.components_
+
+            singular_values[
+                i * self.num_components : (i + 1) * self.num_components
+            ] = pca.explained_variance_  # explained_variance_ratio_
+        # Rather than arbitrarily aligning, stack all the vectors and they're reverse directions and look for 2 times
+        # as many clusters
+        signed_vectors = np.vstack((pca_vectors, pca_vectors * -1))
+        self.singular_values = np.hstack((singular_values, singular_values))
+
+        if self.smoothing is True:
+            signed_vectors = savgol_filter(
+                signed_vectors,
+                window_length=self.window_length,
+                polyorder=self.poly_order,
+            )
+
+        self.signed_vectors = (
+            signed_vectors / np.linalg.norm(signed_vectors, 2, axis=1)[..., np.newaxis]
+        )
+
+        return None
+
+    def EKPCA_bagging(self, data: np.ndarray):
+        n, m = data.shape
+        pca_vectors = np.zeros((self.num_components * self.num_samples, n))
+        singular_values = np.zeros(self.num_components * self.num_samples)
+
+        dist = euclidean_distances(data, data, squared=True)
+
+        # Calculate Gaussian kernel matrix
+        K = np.exp(-5 * dist)
+        Kc = KernelCenterer().fit_transform(K)
+
+        pca = PCA(n_components=self.num_components)
+
+        # run PCA num_samples times
+        for i in range(self.num_samples):
+            subset = np.random.choice(n, self.sample_size, replace=True)
+            pca.fit(Kc[subset, :])
+
+            pca_vectors[
+                i * self.num_components : (i + 1) * self.num_components, :
+            ] = pca.components_
+
+            singular_values[
+                i * self.num_components : (i + 1) * self.num_components
+            ] = pca.explained_variance_  # explained_variance_ratio_
+        # Rather than arbitrarily aligning, stack all the vectors and they're reverse directions and look for 2 times
+        # as many clusters
+
+        self.signed_vectors = pca_vectors
+        self.singular_values = singular_values
+
+        # signed_vectors = np.vstack((pca_vectors, pca_vectors * -1))
+        # self.singular_values = np.hstack((singular_values, singular_values))
+
+        # if self.smoothing is True:
+        #     signed_vectors = savgol_filter(
+        #         signed_vectors,
+        #         window_length=self.window_length,
+        #         polyorder=self.poly_order,
+        #     )
+
+        # self.signed_vectors = (
+        #     signed_vectors / np.linalg.norm(signed_vectors, 2, axis=1)[..., np.newaxis]
+        # )
+
+        return None
+
+    def EPCA_SRS(self, data: np.ndarray):
+        n, m = data.shape
+        pca_vectors = np.zeros((self.num_components * self.num_samples, m))
+        singular_values = np.zeros(self.num_components * self.num_samples)
+
+        pca = PCA(n_components=self.num_components)
+
+        # run PCA num_samples times
+        for i in range(self.num_samples):
+            phi = np.random.normal(0, 1, size=(self.sample_size, m))
+            X = data.T / np.linalg.norm(data.T, axis=0, ord=2)
+            Q = phi @ X
+            subset = np.argmax(Q, axis=1)
+            pca.fit(X[:, subset].T)
+            # pca.fit(data[subset, :])
+            pca_vectors[
+                i * self.num_components : (i + 1) * self.num_components, :
+            ] = pca.components_
+
+            singular_values[
+                i * self.num_components : (i + 1) * self.num_components
+            ] = pca.explained_variance_ratio_
+        # Rather than arbitrarily aligning, stack all the vectors and they're reverse directions and look for 2 times
+        # as many clusters
+        signed_vectors = np.vstack((pca_vectors, pca_vectors * -1))
+        self.singular_values = np.hstack((singular_values, singular_values))
+
+        if self.smoothing is True:
+            signed_vectors = savgol_filter(
+                signed_vectors,
+                window_length=self.window_length,
+                polyorder=self.poly_order,
+            )
+
+            self.signed_vectors = (
+                signed_vectors
+                / np.linalg.norm(signed_vectors, 2, axis=1)[..., np.newaxis]
+            )
+
+        return None
+
+    def EPCA_clustering(self):
+        kmeans = KMeans(n_clusters=self.n_clusters, n_init=10).fit(self.signed_vectors)
+
+        self.centers = (
+            kmeans.cluster_centers_
+            / np.linalg.norm(kmeans.cluster_centers_, 2, axis=1)[..., np.newaxis]
+        )
+
+        self.labels = kmeans.labels_
+
+        self.avg_singular_values = []
+        for unique_label in np.unique(kmeans.labels_):
+            label = np.where(kmeans.labels_ == unique_label)[0]
+            self.avg_singular_values.append(np.average(self.singular_values[label]))
+
+        return None
+
+    def EPCA_RTKM(self):
+        m = self.signed_vectors.shape[-1]
+        rtkm = RTKM(data=self.signed_vectors.T)
+        rtkm.perform_clustering(k=self.n_clusters, percent_outliers=0, max_iter=100)
+        # self.centers = (
+        #     rtkm.centers.T / np.linalg.norm(rtkm.centers, 2, axis=0)[..., np.newaxis]
+        # )
+        # use weights to return components
+        self.centers = np.zeros((self.n_clusters, m))
+        # print(rtkm.weights.shape) #4x200
+        for cluster in range(self.n_clusters):
+            # Nxm
+            weighted_members = (
+                self.signed_vectors * rtkm.weights[cluster, :][..., np.newaxis]
+            )
+            self.centers[cluster, :] = np.average(weighted_members, axis=0)
+
+        # self.labels, _ = rtkm.return_clusters()
+        return None
+
+    def run_EPCA(self, data: np.ndarray):
         assert len(data.shape) == 2, "Data must be 2D"
 
         n, m = data.shape
@@ -345,49 +557,67 @@ class RPCA_OG:
                 self.window_length <= m
             ), "Window length must be less than dimension of data"
 
-        # pca_vectors = np.zeros((self.num_components, m, num_samples))
-        pca_vectors = np.zeros((self.num_components * self.num_samples, m))
+        self.EPCA_bagging(data=data)
+        # self.EPCA_SRS(data=data)
+        self.EPCA_clustering()
+        # self.EPCA_RTKM()
 
-        pca = PCA(n_components=self.num_components)
+        return None
 
-        # run PCA num_samples times
-        for i in range(self.num_samples):
-            subset = np.random.choice(n, self.sample_size, replace=True)
-            pca.fit(data[subset, :])
-            # u,s,vt = np.linalg.norm(data[subset,:])
-            # pca_vectors[:, :, i] = pca.components_
-            pca_vectors[
-                i * self.num_components : (i + 1) * self.num_components, :
-            ] = pca.components_
+    def run_EKPCA(self, data: np.ndarray):
+        assert len(data.shape) == 2, "Data must be 2D"
 
-        # Rather than arbitrarily aligning, stack all the vectors and they're reverse directions and look for 2 times
-        # as many clusters
-        signed_vectors = np.vstack((pca_vectors, pca_vectors * -1))
+        n, m = data.shape
+
+        assert (
+            self.num_components <= m
+        ), "Number of components larger than dimension of data"
 
         if self.smoothing is True:
-            signed_vectors = savgol_filter(
-                signed_vectors,
-                window_length=self.window_length,
-                polyorder=self.poly_order,
-            )
+            assert self.window_length % 2 == 1, "Window length must be odd"
+            assert (
+                self.window_length <= m
+            ), "Window length must be less than dimension of data"
 
-            # smoothed_vectors = np.zeros((n,m))
-            # km = Kalman(alpha = .10)
-            # for sample in range(n):
-            #     smoothed_vectors[sample] = km.compute(np.arange(m), signed_vectors[sample], i = np.arange(m))
+        self.EKPCA_bagging(data=data)
+        # self.EPCA_SRS(data=data)
+        self.EPCA_clustering()
+        # self.EPCA_RTKM()
 
-        signed_vectors = (
-            signed_vectors / np.linalg.norm(signed_vectors, 2, axis=1)[..., np.newaxis]
-        )
+        return None
 
-        kmeans = KMeans(n_clusters=self.n_clusters).fit(signed_vectors)
+    def update_pca_modes(self, new_data):
+        # signed_vectors = EPCA_bagging(new_data)
+        # stacked_vectors = np.vstack((signed_vectors, self.centers))
+        # self.centers = self.EPCA_clustering(stacked_vectors)
+        return None
 
-        centers = (
-            kmeans.cluster_centers_
-            / np.linalg.norm(kmeans.cluster_centers_, 2, axis=1)[..., np.newaxis]
-        )
+    def return_unique_vectors(
+        self, tol: float = 1e-4
+    ) -> Tuple[List[int], List[np.ndarray]]:
+        """
+        Return the labels of the unique eigenvectors up to a reflection.
 
-        return centers, kmeans.labels_
+        Args:
+        tol (float): Tolerance beyond which vectors are considered unique.
+        Returns:
+        unique_labels (List[int]): The labels associated with the clusters of unique e.vectors
+        self.centers[unique_labels]: The unique e.vectors
+        """
+        unique_labels = [0]
+
+        for index in range(1, self.num_components * 2):
+            if np.any(
+                np.linalg.norm(
+                    self.centers[index] + self.centers[unique_labels], axis=1
+                )
+                < tol
+            ):
+                continue
+            else:
+                unique_labels.append(index)
+
+        return unique_labels, self.centers[unique_labels]
 
 
 class RPCA_dbscan:
@@ -522,7 +752,6 @@ class RANSAC_PCA_2:
                 data_copy[:, mask[i]] = avg_value
 
             if len(maybe_inliers_y) > d:
-
                 data_copy[:, maybe_inliers_y] = data[:, maybe_inliers_y]
                 u, s, vh = np.linalg.svd(data_copy)
                 new_obj = self.calculate_objective(u, data_copy)
@@ -549,7 +778,6 @@ class RANSAC_PCA_2:
         sample_size: int = 10,
         d: int = 10,
     ):
-
         final_col_mask, best_obj, best_v = self.phase_1(data, max_iter, sample_size, d)
 
         m, n = data.shape
@@ -593,7 +821,6 @@ class RANSAC_PCA_2:
                 data_copy[mask[0][i], final_col_mask[mask[1][i]]] = avg_value
 
             if len(maybe_inliers_x) > d:
-
                 data_copy[maybe_inliers_x, maybe_inliers_y] = data[
                     maybe_inliers_x, maybe_inliers_y
                 ]
@@ -622,7 +849,6 @@ class RANSAC_PCA_2:
         sample_size: int = 10,
         d: int = 10,
     ):
-
         m, n = data.shape
 
         iterations = 0
@@ -659,7 +885,6 @@ class RANSAC_PCA_2:
                 data_copy[mask[0][i], mask[1][i]] = avg_value
 
             if len(maybe_inliers_x) > d:
-
                 data_copy[maybe_inliers_x, maybe_inliers_y] = data[
                     maybe_inliers_x, maybe_inliers_y
                 ]
