@@ -269,7 +269,8 @@ def score_performance(
     pc_map: TypedDict,
 ) -> List[float]:
     """
-    Match the true component to the best fit predicted component. Evaluate the difference between the two.
+    Match the true component to the best fit predicted component.
+    Evaluate the difference between the two.
 
     Args:
         true_components (np.ndarray): The true PCA components to be matched.
@@ -278,7 +279,8 @@ def score_performance(
         pred_svs (np.ndarray): Pred singular values
 
     Returns:
-        diff (List[float]): List containing the minimum difference between each matched true and predicted PCA component.
+        diff (List[float]): List containing the minimum difference between each
+        matched true and predicted PCA component.
     """
     component_diff = []
 
@@ -321,9 +323,12 @@ def run_all_pca_methods(
         pca_runtime (float): Runtime of PCA
         epca_runtime (float): Runtime of EPCA
         rpca_runtime (float): Runtime of RPCA
-        pca_performance (List[float]): List containing difference between true components and those predicted by PCA
-        epca_performance (List[float]): List containing difference between true components and those predicted by EPCA
-        rpca_performance (List[float]): List containing difference between true components and those predicted by RPCA
+        pca_performance (List[float]): List containing difference between true
+            components and those predicted by PCA
+        epca_performance (List[float]): List containing difference between true
+            components and those predicted by EPCA
+        rpca_performance (List[float]): List containing difference between true
+            components and those predicted by RPCA
 
     """
 
@@ -436,7 +441,8 @@ def write_to_file(
     outliers: bool = True,
 ):
     """
-    Write results of running different versions of PCA on corrupted data (salt and pepper noise and white noise) to a file.
+    Write results of running different versions of PCA on corrupted data
+    (salt and pepper noise and white noise) to a file.
 
     Args:
         original_data (np.ndarray): Data to add noise to and run analysis on

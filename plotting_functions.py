@@ -1,3 +1,8 @@
+"""Functions for generating figures."""
+
+from typing import List
+from sklearn.decomposition import PCA
+from matplotlib.lines import Line2D
 import numpy as np
 import seaborn as sns
 import matplotlib.pyplot as plt
@@ -11,9 +16,6 @@ from helper_functions import (
     run_rpca,
     score_performance,
 )
-from sklearn.decomposition import PCA
-from matplotlib.lines import Line2D
-from typing import List
 
 
 def create_noisy_datasets(
@@ -35,7 +37,7 @@ def create_noisy_datasets(
         outlier_scale (float): Scale of the outliers.
         outlier_percentage (float): Percent of outliers to add to the data.
     """
-    data_samples, data_dimension = data.shape
+    data_samples, _ = data.shape
     normal_white_data = data + np.random.normal(
         0, normal_white_variance, size=data.shape
     )
@@ -107,10 +109,10 @@ def plot_epca_trials(
             axs[index, trial].plot(true_components[index], c="r")
             axs[index, trial].plot(epca.centers[pc_map[index]], "--b")
 
-            LL = np.percentile(epca.signed_vectors[ind], 5, axis=0)
-            UL = np.percentile(epca.signed_vectors[ind], 95, axis=0)
+            lower_limit = np.percentile(epca.signed_vectors[ind], 5, axis=0)
+            upper_limit = np.percentile(epca.signed_vectors[ind], 95, axis=0)
             axs[index, trial].fill_between(
-                np.arange(data_dimension), LL, UL, color="grey"
+                np.arange(data_dimension), lower_limit, upper_limit, color="grey"
             )
 
             for value in epca.explained_variance[ind]:
@@ -277,7 +279,7 @@ def outlier_comparison(
     pca.fit(data)
     true_components = pca.components_
 
-    data_samples, data_dimension = data.shape
+    data_samples, _ = data.shape
 
     # fig, axs = plt.subplots(2, 5, figsize=(25, 10))
     pca_1_avgs = []
@@ -300,7 +302,7 @@ def outlier_comparison(
             rpca_1 = []
             rpca_2 = []
 
-            for trial in range(num_trials):
+            for _ in range(num_trials):
                 ind = np.random.choice(
                     data_samples,
                     int(np.round(data_samples * outlier_fraction)),
@@ -310,14 +312,14 @@ def outlier_comparison(
                 outlier_data[ind] = outlier_data[ind] * outlier_scale
                 outlier_data = outlier_data.reshape((data_samples, -1))
 
-                pca_pcs, pca_svs, _ = run_pca(images=outlier_data, num_components=2)
+                pca_pcs, _v, _ = run_pca(images=outlier_data, num_components=2)
                 pca_map = match_components(true_components, pca_pcs)
                 pca_performance = score_performance(true_components, pca_pcs, pca_map)
                 pca_1.append(pca_performance[0])
                 pca_2.append(pca_performance[1])
 
                 if run_rpca_condition is True:
-                    rpca_pcs, rpca_svs, _ = run_rpca(
+                    rpca_pcs, _, _ = run_rpca(
                         images=outlier_data, num_components=2, reg_E=0.2
                     )
                     rpca_map = match_components(true_components, rpca_pcs)
@@ -331,8 +333,8 @@ def outlier_comparison(
                     rpca_1.append(0)
                     rpca_2.append(0)
 
-                for run in range(num_runs):
-                    epca_pcs, epca_svs, _ = run_epca(
+                for _ in range(num_runs):
+                    epca_pcs, _, _ = run_epca(
                         images=outlier_data,
                         num_components=2,
                         num_bags=epca_num_bags,
@@ -402,7 +404,7 @@ def white_noise_comparison(
     sv1 = pca.singular_values_[0]
     true_components = pca.components_
 
-    data_samples, data_dimension = data.shape
+    data_samples, _ = data.shape
 
     # fig, axs = plt.subplots(2, 5, figsize=(25, 10))
     pca_1_avgs = []
@@ -424,7 +426,7 @@ def white_noise_comparison(
         rpca_1 = []
         rpca_2 = []
 
-        for trial in range(num_trials):
+        for _ in range(num_trials):
             variance = sv1 / divisor
 
             if white_type == "uniform":
@@ -434,7 +436,7 @@ def white_noise_comparison(
                 white_data = data + np.random.normal(0, variance, size=data.shape)
                 white_data = white_data.reshape((data_samples, -1))
 
-            pca_pcs, pca_svs, _ = run_pca(images=white_data, num_components=2)
+            pca_pcs, _, _ = run_pca(images=white_data, num_components=2)
             pca_map = match_components(true_components, pca_pcs)
             pca_performance = score_performance(true_components, pca_pcs, pca_map)
             pca_1.append(pca_performance[0])
@@ -455,7 +457,7 @@ def white_noise_comparison(
                 rpca_1.append(0)
                 rpca_2.append(0)
 
-            for run in range(num_runs):
+            for _ in range(num_runs):
                 epca_pcs, _, _ = run_epca(
                     images=white_data,
                     num_components=2,
@@ -548,7 +550,8 @@ def sparse_noise_comparison(
     run_rpca_condition: bool = True,
 ):
     """
-     Compare performance of all three methods on data corrupted with various amounts of sparse noise.
+     Compare performance of all three methods on data corrupted with
+     various amounts of sparse noise.
 
     Args:
         data (np.ndarray): Input data.
@@ -565,7 +568,7 @@ def sparse_noise_comparison(
     pca.fit(data)
     true_components = pca.components_
 
-    data_samples, data_dimension = data.shape
+    data_samples, _ = data.shape
 
     # fig, axs = plt.subplots(2, 5, figsize=(25, 10))
     pca_1_avgs = []
@@ -588,20 +591,20 @@ def sparse_noise_comparison(
             rpca_1 = []
             rpca_2 = []
 
-            for trial in range(num_trials):
+            for _ in range(num_trials):
                 sp_data = sparse_noise(
                     image=data, prob=sp_prob, num=np.max(data) * sp_scale
                 )
                 sp_data = sp_data.reshape((data_samples, -1))
 
-                pca_pcs, pca_svs, _ = run_pca(images=sp_data, num_components=2)
+                pca_pcs, _, _ = run_pca(images=sp_data, num_components=2)
                 pca_map = match_components(true_components, pca_pcs)
                 pca_performance = score_performance(true_components, pca_pcs, pca_map)
                 pca_1.append(pca_performance[0])
                 pca_2.append(pca_performance[1])
 
                 if run_rpca_condition is True:
-                    rpca_pcs, rpca_svs, _ = run_rpca(
+                    rpca_pcs, _, _ = run_rpca(
                         images=sp_data, num_components=2, reg_E=0.2
                     )
                     rpca_map = match_components(true_components, rpca_pcs)
@@ -615,8 +618,8 @@ def sparse_noise_comparison(
                     rpca_1.append(0)
                     rpca_2.append(0)
 
-                for run in range(num_runs):
-                    epca_pcs, epca_svs, _ = run_epca(
+                for _ in range(num_runs):
+                    epca_pcs, _, _ = run_epca(
                         images=sp_data,
                         num_components=2,
                         num_bags=epca_num_bags,
