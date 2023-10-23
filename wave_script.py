@@ -26,7 +26,7 @@ if __name__ == "__main__":
 
         epca_args = {
             "original": {"num_samples": 100, "sample_size": 20},
-            "sparse s&p": {"num_samples": 100, "sample_size": 20},
+            "sparse": {"num_samples": 100, "sample_size": 20},
             "uniform white": {
                 "num_samples": 100,
                 "sample_size": 20,

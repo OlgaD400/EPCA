@@ -83,14 +83,14 @@ def add_outliers(data: np.ndarray, outlier_fraction: float, outlier_scale: float
         outlier_data (np.ndarray): Data with added outliers.
     """
 
-    data_shape = data.shape
+    num_samples = data.shape[0]
 
     ind = np.random.choice(
-        data_shape, int(np.round(data_shape * outlier_fraction)), replace=False
+        num_samples, int(np.round(num_samples * outlier_fraction)), replace=False
     )
     outlier_data = data.copy()
     outlier_data[ind] = outlier_data[ind] * outlier_scale
-    outlier_data = outlier_data.reshape((data_shape, -1))
+    outlier_data = outlier_data.reshape((num_samples, -1))
 
     return outlier_data
 
@@ -108,16 +108,16 @@ def add_white_noise(data: np.ndarray, variance: float, noise_type: str):
 
     """
 
-    data_shape = data.shape
+    num_samples = data.shape[0]
 
     if noise_type == "uniform":
         white_noise_data = data + variance * np.random.random(size=data.shape)
-        white_noise_data = white_noise_data.reshape((data_shape, -1))
+        white_noise_data = white_noise_data.reshape((num_samples, -1))
 
     # add normal white noise
     elif noise_type == "normal":
         white_noise_data = data + np.random.normal(0, variance, size=data.shape)
-        white_noise_data = white_noise_data.reshape((data_shape, -1))
+        white_noise_data = white_noise_data.reshape((num_samples, -1))
 
     return white_noise_data
 
@@ -417,12 +417,12 @@ def write_to_file(
         outlier_scale (float): Scale of the outliers.
         outlier_fraction (float): Fraction of outliers to add to the data.
     """
-    data_samples = original_data.shape[0]
+    num_samples = original_data.shape[0]
 
     file = open(filename, "w")
 
     pca = PCA(n_components=num_components)
-    pca.fit(original_data.reshape((data_samples, -1)))
+    pca.fit(original_data.reshape((num_samples, -1)))
     sv_1 = pca.singular_values_[0]
 
     # Find how many components capture at least 90% of the information
@@ -434,19 +434,19 @@ def write_to_file(
         " components",
     )
 
-    # Add sparse salt and pepper noise
+    # Add sparse noise
     data_types = ["original"]
-    data_list = [original_data.reshape((data_samples, -1))]
+    data_list = [original_data.reshape((num_samples, -1))]
 
     if sparse_noise_args is not None:
-        print("Creating sparse salt and pepper noise")
+        print("Creating sparse noise")
         sparse_data = add_sparse_noise(
             original_data,
             prob=sparse_noise_args.get("sparse_probability"),
             num=np.max(original_data) * 2,
         )
 
-        sparse_data = sparse_data.reshape((data_samples, -1))
+        sparse_data = sparse_data.reshape((num_samples, -1))
         print("Sparse noise created")
         data_types.append("sparse")
         data_list.append(sparse_data)

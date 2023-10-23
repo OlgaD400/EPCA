@@ -16,7 +16,7 @@ if __name__ == "__main__":
             "num_samples": 100,
             "sample_size": 20,
         },
-        "sparse s&p": {
+        "sparse": {
             "num_samples": 100,
             "sample_size": 20,
         },

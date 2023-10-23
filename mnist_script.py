@@ -10,7 +10,7 @@ if __name__ == "__main__":
     images = np.array(images)
     labels = np.array(labels)
 
-    NUM_TRIALS = 2
+    NUM_TRIALS = 1
 
     for integer in range(NUM_TRIALS):
         number = np.where(labels == integer)[0]
@@ -19,7 +19,7 @@ if __name__ == "__main__":
         pca_args = {}
         epca_args = {
             "original": {"num_samples": 100, "sample_size": 100},
-            "sparse s&p": {"num_samples": 100, "sample_size": 100},
+            "sparse": {"num_samples": 100, "sample_size": 100},
             "uniform white": {
                 "num_samples": 100,
                 "sample_size": 100,
@@ -32,10 +32,11 @@ if __name__ == "__main__":
         }
         rpca_args = {"reg_E": 0.2}
 
-        for i in range(0, 5):
-            FILENAME = (
-                "mnist_data/mnist_data_" + str(integer) + "_trial_" + str(i) + ".txt"
-            )
+        for i in range(0, 1):
+            FILENAME = "temp.txt"
+            # (
+            #     "mnist_data/mnist_data_" + str(integer) + "_trial_" + str(i) + ".txt"
+            # )
 
             write_to_file(
                 original_data=og_data,
