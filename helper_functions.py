@@ -395,14 +395,9 @@ def write_to_file(
     epca_args: TypedDict,
     rpca_args: TypedDict,
     filename: str,
-    sp_probability: float = 0.01,
-    outlier_scale: float = 10,
-    outlier_fraction: float = 0.10,
-    variance_divisor: float = 100,
-    sparse: bool = True,
-    uniform: bool = True,
-    normal: bool = True,
-    outliers: bool = True,
+    sparse_noise_args: Optional[TypedDict] = None,
+    outlier_args: Optional[TypedDict] = None,
+    white_noise_args: Optional[TypedDict] = None,
 ):
     """
     Write results of running different versions of PCA on corrupted data
@@ -412,9 +407,9 @@ def write_to_file(
         original_data (np.ndarray): Data to add noise to and run analysis on
         num_components (int): Number of components to analyze
         timeout (float): Number of seconds after which to timeout a function run
-        pca_args (TypedDict): Optional argumnets for PCA
-        epca_args (TypedDict): Optional arguments for EPCA
-        rpca_args (TypedDict): Optional arguments for RPCA
+        pca_args (TypedDict): Arguments for PCA
+        epca_args (TypedDict): Arguments for EPCA
+        rpca_args (TypedDict): Arguments for RPCA
         filename (str): Filename to which to write the output
         sp_probability (float): Probability of sparse noise
         uniform_white_variance (float): Variance for uniform white noise
@@ -443,20 +438,22 @@ def write_to_file(
     data_types = ["original"]
     data_list = [original_data.reshape((data_samples, -1))]
 
-    if sparse is True:
+    if sparse_noise_args is not None:
         print("Creating sparse salt and pepper noise")
-        sp_data = add_sparse_noise(
-            original_data, prob=sp_probability, num=np.max(original_data) * 2
+        sparse_data = add_sparse_noise(
+            original_data,
+            prob=sparse_noise_args.get("sparse_probability"),
+            num=np.max(original_data) * 2,
         )
 
-        sp_data = sp_data.reshape((data_samples, -1))
+        sparse_data = sparse_data.reshape((data_samples, -1))
         print("Sparse noise created")
         data_types.append("sparse")
-        data_list.append(sp_data)
+        data_list.append(sparse_data)
 
-    # add uniform white noise
-    if uniform is True:
-        uniform_white_variance = sv_1 / variance_divisor
+    # add uniform and gaussian white noise
+    if white_noise_args is not None:
+        uniform_white_variance = sv_1 / white_noise_args.get("variance_divisor")
         print("Creating uniform white noise")
         uniform_white_data = add_white_noise(
             data=original_data, variance=uniform_white_variance, noise_type="uniform"
@@ -465,9 +462,7 @@ def write_to_file(
         data_types.append("uniform white")
         data_list.append(uniform_white_data)
 
-    # add normal white noise
-    if normal is True:
-        normal_white_variance = sv_1 / variance_divisor
+        normal_white_variance = sv_1 / white_noise_args.get("variance_divisor")
         print("Creating normal white noise")
         normal_white_data = add_white_noise(
             data=original_data, variance=normal_white_variance, noise_type="normal"
@@ -476,14 +471,14 @@ def write_to_file(
         data_types.append("normal white")
         data_list.append(normal_white_data)
 
-    if outliers is True:
+    if outlier_args is not None:
         # Add outliers
-        print("Adding ", outlier_fraction, "percent outliers")
+        print("Adding ", outlier_args.get("outlier_fraction"), "percent outliers")
 
         outlier_data = add_outliers(
             data=original_data,
-            outlier_fraction=outlier_fraction,
-            outlier_scale=outlier_scale,
+            outlier_fraction=outlier_args.get("outlier_fraction"),
+            outlier_scale=outlier_args.get("outlier_scale"),
         )
         data_types.append("outliers")
         data_list.append(outlier_data)

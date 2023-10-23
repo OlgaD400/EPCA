@@ -44,8 +44,7 @@ if __name__ == "__main__":
             epca_args=epca_args,
             rpca_args=rpca_args,
             filename=FILENAME,
-            sp_probability=0.01,
-            outlier_scale=5,
-            outlier_fraction=0.05,
-            variance_divisor=1000,
+            sparse_noise_args={"sparse_probability": 0.01},
+            outlier_args={"outlier_scale": 5, "outlier_fraction": 0.05},
+            white_noise_args={"variance_divisor": 1000},
         )

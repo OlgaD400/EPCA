@@ -33,7 +33,7 @@ if __name__ == "__main__":
         rpca_args = {"reg_E": 0.2}
 
         for i in range(0, 5):
-            filename = (
+            FILENAME = (
                 "mnist_data/mnist_data_" + str(integer) + "_trial_" + str(i) + ".txt"
             )
 
@@ -44,9 +44,8 @@ if __name__ == "__main__":
                 pca_args=pca_args,
                 epca_args=epca_args,
                 rpca_args=rpca_args,
-                filename=filename,
-                sp_probability=0.01,
-                outlier_scale=5,
-                outlier_fraction=0.05,
-                variance_divisor=1000,
+                filename=FILENAME,
+                sparse_noise_args={"sparse_probability": 0.01},
+                outlier_args={"outlier_scale": 5, "outlier_fraction": 0.05},
+                white_noise_args={"variance_divisor": 1000},
             )
