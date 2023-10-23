@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 from EPCA.EPCA import EPCA
 from helper_functions import (
-    sparse_noise,
+    add_sparse_noise,
     match_components,
     run_epca,
     run_pca,
@@ -581,8 +581,8 @@ def sparse_noise_comparison(
             rpca_2 = []
 
             for _ in range(num_trials):
-                sp_data = sparse_noise(
-                    image=data, prob=sp_prob, num=np.max(data) * sp_scale
+                sp_data = add_sparse_noise(
+                    data=data, prob=sp_prob, num=np.max(data) * sp_scale
                 )
                 sp_data = sp_data.reshape((data_samples, -1))
 

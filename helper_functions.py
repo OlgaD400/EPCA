@@ -1,7 +1,7 @@
 """Functions for running experiments."""
 import random
 import time
-from typing import TypedDict, List
+from typing import TypedDict, List, Optional
 from multiprocessing import Pool, TimeoutError
 from tensorly.decomposition import robust_pca
 from sklearn.decomposition import PCA
@@ -35,7 +35,7 @@ def create_noisy_datasets(
     uniform_white_data = data + uniform_white_variance * np.random.random(
         size=data.shape
     )
-    sp_data = sparse_noise(data, sp_probability, num=sparse_num)
+    sp_data = add_sparse_noise(data, sp_probability, num=sparse_num)
 
     ind = np.random.choice(
         data_samples, int(np.round(data_samples * outlier_percentage)), replace=False
@@ -44,6 +44,82 @@ def create_noisy_datasets(
     outlier_data[ind] = outlier_data[ind] * outlier_scale
 
     return normal_white_data, uniform_white_data, sp_data, outlier_data
+
+
+def add_sparse_noise(data: np.ndarray, prob: float, num: float):
+    """
+    Add salt and pepper noise to data
+    Args:
+        data (np.ndarray): Data
+        prob (float): Probability of the noise
+        num (float): Number to replace data entries
+    Returns:
+        output (np.ndarray): Data with added noise
+    """
+
+    assert 0 <= prob <= 1, "Probability must be in [0,1]."
+
+    output = np.zeros(data.shape)
+    thres = prob
+    for i in range(data.shape[0]):
+        for j in range(data.shape[1]):
+            rdn = random.random()
+            if rdn < thres:
+                output[i][j] = num
+            else:
+                output[i][j] = data[i][j]
+    return output
+
+
+def add_outliers(data: np.ndarray, outlier_fraction: float, outlier_scale: float):
+    """
+    Add outliers to data.
+
+    data (np.ndarray): Data
+    outlier_fraction (float): Fraction of rows to corrupt.
+    outlier_scale (float): Scale of outliers.
+
+    Returns:
+        outlier_data (np.ndarray): Data with added outliers.
+    """
+
+    data_shape = data.shape
+
+    ind = np.random.choice(
+        data_shape, int(np.round(data_shape * outlier_fraction)), replace=False
+    )
+    outlier_data = data.copy()
+    outlier_data[ind] = outlier_data[ind] * outlier_scale
+    outlier_data = outlier_data.reshape((data_shape, -1))
+
+    return outlier_data
+
+
+def add_white_noise(data: np.ndarray, variance: float, type: str):
+    """
+    Add either Gaussian or uniform white noise to data.
+
+    Args:
+        data (np.ndarray): Data.
+        variance (float): Noise is sampled from distribution with mean 0 and this variance.
+        type (str): Type of white noise: "uniform" or "gaussian".
+    Returns:
+        white_noise_data (np.ndarray): Data with added white noise.
+
+    """
+
+    data_shape = data.shape
+
+    if type == "uniform":
+        white_noise_data = data + variance * np.random.random(size=data.shape)
+        white_noise_data = white_noise_data.reshape((data_shape, -1))
+
+    # add normal white noise
+    elif type == "normal":
+        white_noise_data = data + np.random.normal(0, variance, size=data.shape)
+        white_noise_data = white_noise_data.reshape((data_shape, -1))
+
+    return white_noise_data
 
 
 def match_components(true_components: np.ndarray, pred_components: np.ndarray) -> dict:
@@ -156,84 +232,6 @@ def run_rpca(images: np.ndarray, num_components: int, **kwargs):
     final_components = np.vstack((pred_components, pred_components * -1))
     final_svs = np.hstack((pred_svs, pred_svs))
     return final_components, final_svs, np.round(runtime, 3)
-
-
-def sp_noise(image: np.ndarray, prob: float) -> np.ndarray:
-    """
-    Add salt and pepper noise to data
-    Args:
-        image (np.ndarray): Data
-        prob (float): Probability of the noise
-    Returns:
-        output (np.ndarray): Data with added noise
-    """
-
-    assert 0 <= prob <= 1, "Probability must be in [0,1]."
-
-    output = np.zeros(image.shape)
-    thres = 1 - prob
-    for i in range(image.shape[0]):
-        for j in range(image.shape[1]):
-            rdn = random.random()
-            if rdn < prob:
-                output[i][j] = -1
-            elif rdn > thres:
-                output[i][j] = 1
-            else:
-                output[i][j] = image[i][j]
-    return output
-
-
-def sparse_noise(image: np.ndarray, prob: float, num: float):
-    """
-    Add salt and pepper noise to data
-    Args:
-        image (np.ndarray): Data
-        prob (float): Probability of the noise
-        num (float): Number to replace data entries
-    Returns:
-        output (np.ndarray): Data with added noise
-    """
-
-    assert 0 <= prob <= 1, "Probability must be in [0,1]."
-
-    output = np.zeros(image.shape)
-    thres = prob
-    for i in range(image.shape[0]):
-        for j in range(image.shape[1]):
-            rdn = random.random()
-            if rdn < thres:
-                output[i][j] = num
-            else:
-                output[i][j] = image[i][j]
-    return output
-
-
-def sparse_noise_static(image: np.ndarray, prob: float, num: float):
-    """
-    Add salt and pepper noise to data
-    Args:
-        image (np.ndarray): Data
-        prob (float): Probability of the noise
-    Returns:
-        output (np.ndarray): Data with added noise
-    """
-
-    assert 0 <= prob <= 1, "Probability must be in [0,1]."
-
-    data_samples, data_dimension = image.shape
-    entries = np.random.choice(
-        data_samples * data_dimension,
-        np.round(prob * data_samples * data_dimension),
-        replace=False,
-    )
-    x_coord = entries // data_samples - 1
-    y_coord = entries % data_samples - 1
-
-    output = image.copy()
-    output[x_coord, y_coord] = num
-
-    return output
 
 
 def score_performance(
@@ -432,33 +430,28 @@ def write_to_file(
         " components",
     )
 
-    # scaler = StandardScaler()
-
     # Add sparse salt and pepper noise
     data_types = ["original"]
     data_list = [original_data.reshape((data_samples, -1))]
 
     if sparse is True:
         print("Creating sparse salt and pepper noise")
-        sp_data = sparse_noise(
+        sp_data = add_sparse_noise(
             original_data, prob=sp_probability, num=np.max(original_data) * 2
         )
 
         sp_data = sp_data.reshape((data_samples, -1))
-        print("Sparse salt and pepper noise created")
-        data_types.append("sparse s&p")
+        print("Sparse noise created")
+        data_types.append("sparse")
         data_list.append(sp_data)
 
     # add uniform white noise
     if uniform is True:
         uniform_white_variance = sv_1 / variance_divisor
         print("Creating uniform white noise")
-        uniform_white_data = original_data + uniform_white_variance * np.random.random(
-            size=original_data.shape
+        uniform_white_data = add_white_noise(
+            data=original_data, variance=uniform_white_variance, type="uniform"
         )
-        # if scaling is True:
-        #     uniform_white_data = scaler.fit_transform(uniform_white_data)
-        uniform_white_data = uniform_white_data.reshape((data_samples, -1))
         print("Created uniform white noise")
         data_types.append("uniform white")
         data_list.append(uniform_white_data)
@@ -467,13 +460,9 @@ def write_to_file(
     if normal is True:
         normal_white_variance = sv_1 / variance_divisor
         print("Creating normal white noise")
-        normal_white_data = original_data + np.random.normal(
-            0, normal_white_variance, size=original_data.shape
+        normal_white_data = add_white_noise(
+            data=original_data, variance=normal_white_variance, type="normal"
         )
-        # if scaling is True:
-        #     normal_white_data = scaler.fit_transform(normal_white_data)
-        normal_white_data = normal_white_data.reshape((data_samples, -1))
-
         print("Created normal white noise")
         data_types.append("normal white")
         data_list.append(normal_white_data)
@@ -481,12 +470,12 @@ def write_to_file(
     if outliers is True:
         # Add outliers
         print("Adding ", outlier_fraction, "percent outliers")
-        ind = np.random.choice(
-            data_samples, int(np.round(data_samples * outlier_fraction)), replace=False
+
+        outlier_data = add_outliers(
+            data=original_data,
+            outlier_fraction=outlier_fraction,
+            outlier_scale=outlier_scale,
         )
-        outlier_data = original_data.copy()
-        outlier_data[ind] = outlier_data[ind] * outlier_scale
-        outlier_data = outlier_data.reshape((data_samples, -1))
         data_types.append("outliers")
         data_list.append(outlier_data)
 
