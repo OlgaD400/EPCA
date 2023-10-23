@@ -1,13 +1,11 @@
 """Functions for running experiments."""
 import random
 import time
-from typing import Tuple, Optional, TypedDict, List
+from typing import TypedDict, List
 from multiprocessing import Pool, TimeoutError
 from tensorly.decomposition import robust_pca
 from sklearn.decomposition import PCA
-from scipy.signal import savgol_filter
 import numpy as np
-import matplotlib.pyplot as plt
 from EPCA.EPCA import EPCA
 
 
@@ -282,7 +280,6 @@ def run_all_pca_methods(
 
     Args:
         true_components (np.ndarray): The true PCA components
-        true_svs (np.ndarray): The true PCA singular values
         data (np.ndarray)
         timeout (float): Number of seconds after which to timeout the function run
         num_components (int): The number of components to search for
@@ -352,7 +349,6 @@ def run_all_pca_methods(
             kwds={
                 "images": data,
                 "num_components": num_components,
-                "smoothing": rpca_args.get("smoothing", False),
                 "reg_E": rpca_args.get("reg_E", 1.0),
                 "reg_J": rpca_args.get("reg_J", 1.0),
                 "learning_rate": rpca_args.get("learning_rate", 1.1),

@@ -37,12 +37,10 @@ def plot_components(components: np.ndarray, imsize: Optional[Tuple] = None):
 
 def plot_epca_trials(
     epca_args: dict,
-    num_components: int,
     num_trials: int,
     input_data: np.ndarray,
     true_components: np.ndarray,
-    filename: str,
-    filename_2: str,
+    root_filename: str,
     figsize=(15, 10),
     show_outliers=True,
 ):
@@ -57,12 +55,19 @@ def plot_epca_trials(
         num_trials (int): Number of trials to run.
         input_data (int): Data on which to run EPCA.
         true_components (np.ndarray): True components.
-        filename (str): Path at which to save image.
+        root_filename (str): Path at which to save image. To be appended with "_epca_components_trials.pdf"
+            or "_epca_variance_trials.pdf"
         figsize (Optional[Tuple]): size of figure
         show_outliers (bool): Whether or not to show outliers in the boxplots
             of explained variance.
+    Returns:
+        fig: Components figure.
+        axs: Axes associated with the compnents figure.
+        fig2: Variance figure.
 
     """
+    num_components = epca_args.get("num_components")
+
     fig, axs = plt.subplots(
         num_components, num_trials, figsize=figsize, sharex=True, sharey=True
     )
@@ -74,9 +79,6 @@ def plot_epca_trials(
             num_components=num_components,
             num_bags=epca_args.get("num_bags", 100),
             bag_size=epca_args.get("bag_size", 10),
-            smoothing=epca_args.get("smoothing", False),
-            window_length=epca_args.get("window_length", 31),
-            poly_order=epca_args.get("poly_order", 3),
         )
         _, data_dimension = input_data.shape
         epca.run_epca(input_data)
@@ -117,8 +119,7 @@ def plot_epca_trials(
     legend_elements = [
         Line2D([0], [0], color="r", label="True Component"),
         Line2D([0], [0], color="b", label="Avg. Predicted Component", linestyle="--"),
-        mpatches.Patch(color="grey", label="95% CI")
-        # Line2D([0], [0], color="grey", label="Sampled Component"),
+        mpatches.Patch(color="grey", label="95% CI"),
     ]
     axs[0, 2].legend(
         handles=legend_elements,
@@ -127,7 +128,9 @@ def plot_epca_trials(
         framealpha=1,
     )
 
-    plt.savefig(filename, format="pdf", bbox_inches="tight")
+    plt.savefig(
+        root_filename + "_epca_components_trials.pdf", format="pdf", bbox_inches="tight"
+    )
 
     plt.figure(figsize=(10, 5))
     fig2 = sns.boxplot(
@@ -138,40 +141,41 @@ def plot_epca_trials(
     fig2.tick_params(labelsize=16)
     fig2.legend(fontsize=16)
 
-    plt.savefig(filename_2, format="pdf", bbox_inches="tight")
+    plt.savefig(
+        root_filename + "_epca_variance_trials.pdf", format="pdf", bbox_inches="tight"
+    )
 
     return fig, axs, fig2
 
 
 def plot_compare_methods(
     num_components: int,
-    epca_args: dict,
-    pca_args: dict,
-    rpca_args: dict,
     input_data: np.ndarray,
     true_components: np.ndarray,
+    epca_args: Optional[dict] = None,
+    pca_args: Optional[dict] = None,
+    rpca_args: Optional[dict] = None,
 ):
     """
-    Plot top two components of epca, rpca, and pca vs true components.
+    Plot top two components of EPCA, RPCA, and PCA vs true components.
 
     Args:
         num_components (int): Num components to calculate.
         epca_args (dict): Dictionary of arguments for EPCA.
         pca_args (dict): Dictionary of arguments for PCA.
-        rpca_args (dict): Dictionary of arguments for rpca.
+        rpca_args (dict): Dictionary of arguments for RPCA.
         input_data (dict): Data on which to run PCA.
         true_components (np.ndarray): True components.
+    Return:
+        fig: Figure comparing the top two components as predicted by up to three methods.
     """
     if epca_args is not None:
         ####### EPCA ###############
         epca_pred_components, _, _ = run_epca(
             images=input_data,
             num_components=num_components,
-            num_bags=epca_args.get("num_samples", 100),
-            bag_size=epca_args.get("sample_size", 10),
-            smoothing=epca_args.get("smoothing", False),
-            window_length=epca_args.get("window_length", 31),
-            poly_order=epca_args.get("poly_order", 3),
+            num_bags=epca_args.get("num_bags", 100),
+            bag_size=epca_args.get("bag_size", 10),
         )
         epca_map = match_components(true_components, epca_pred_components)
 
@@ -180,9 +184,6 @@ def plot_compare_methods(
         final_pca, _, _ = run_pca(
             images=input_data,
             num_components=num_components,
-            smoothing=pca_args.get("smoothing", False),
-            window_length=pca_args.get("window_length", 51),
-            poly_order=pca_args.get("poly_order", 3),
         )
         pca_map = match_components(true_components, final_pca)
 
@@ -195,9 +196,6 @@ def plot_compare_methods(
             reg_J=rpca_args.get("reg_J", 1.0),
             learning_rate=rpca_args.get("learning_rate", 1.1),
             n_iter_max=rpca_args.get("n_iter_max", 50),
-            smoothing=rpca_args.get("smoothing", False),
-            window_legnth=rpca_args.get("window_length", 51),
-            poly_order=rpca_args.get("poly_order", 3),
         )
         rpca_map = match_components(true_components, final_rpca)
 
@@ -232,34 +230,37 @@ def plot_compare_methods(
 
 def outlier_comparison(
     data: np.ndarray,
-    prefix: str,
-    epca_num_bags: int = 100,
-    epca_bag_size: int = 5,
-    outlier_fractions: List = [0.01, 0.05, 0.10, 0.15, 0.20, 0.25],
-    outlier_scales: List = [2, 5, 10, 20, 100],
+    root_filename: str,
+    epca_args: dict,
+    outlier_fractions: Optional[List] = None,
+    outlier_scales: Optional[List] = None,
     num_runs: int = 5,
     num_trials: int = 5,
     run_rpca_condition: bool = True,
 ):
     """
-    Compare performance of all three methods on data corrupted with various amounts of outliers.
+    Gather performance of all three methods on data corrupted with various amounts of outliers.
 
     Args:
         data (np.ndarray): Input data.
         prefix (str): filepath to which to save data
-        epca_num_bags (int): Number of bags to use in EPCA.
-        epca_bag_size (int): Size of bags to use in EPCA.
+        epca_args (dict): Arguments for EPCA.
         outlier_fraction (List): Fraction of outliers to add to data.
         outlier_scale (List): Scale of outliers to add to data.
         num_trials (int): Number of times to corrupt data at each scale.
         num_runs (int): Number of times to run each method on a corrupted data set.
-        run_rpca_condition (bool): Whether or not to run rpca (avoid timeout).
+        run_rpca_condition (bool): Whether or not to run RPCA (avoid timeout).
     """
     pca = PCA(n_components=2)
     pca.fit(data)
     true_components = pca.components_
 
     data_samples, _ = data.shape
+
+    if outlier_fractions is None:
+        outlier_fractions = [0.01, 0.05, 0.10, 0.15, 0.20, 0.25]
+    if outlier_scales is None:
+        outlier_scales = [2, 5, 10, 20, 100]
 
     # fig, axs = plt.subplots(2, 5, figsize=(25, 10))
     pca_1_avgs = []
@@ -292,7 +293,7 @@ def outlier_comparison(
                 outlier_data[ind] = outlier_data[ind] * outlier_scale
                 outlier_data = outlier_data.reshape((data_samples, -1))
 
-                pca_pcs, _v, _ = run_pca(images=outlier_data, num_components=2)
+                pca_pcs, _, _ = run_pca(images=outlier_data, num_components=2)
                 pca_map = match_components(true_components, pca_pcs)
                 pca_performance = score_performance(true_components, pca_pcs, pca_map)
                 pca_1.append(pca_performance[0])
@@ -317,8 +318,8 @@ def outlier_comparison(
                     epca_pcs, _, _ = run_epca(
                         images=outlier_data,
                         num_components=2,
-                        num_bags=epca_num_bags,
-                        bag_size=epca_bag_size,
+                        num_bags=epca_args.get("num_bags", 100),
+                        bag_size=epca_args.get("bag_size", 5),
                     )
                     epca_map = match_components(true_components, epca_pcs)
                     epca_performance = score_performance(
@@ -337,12 +338,12 @@ def outlier_comparison(
             rpca_1_avgs.append(np.average(rpca_1))
             rpca_2_avgs.append(np.average(rpca_2))
 
-    np.save(prefix + "pca_1", pca_1_avgs)
-    np.save(prefix + "pca_2", pca_2_avgs)
-    np.save(prefix + "epca_1", epca_1_avgs)
-    np.save(prefix + "epca_2", epca_2_avgs)
-    np.save(prefix + "rpca_1", rpca_1_avgs)
-    np.save(prefix + "rpca_2", rpca_2_avgs)
+    np.save(root_filename + "pca_1", pca_1_avgs)
+    np.save(root_filename + "pca_2", pca_2_avgs)
+    np.save(root_filename + "epca_1", epca_1_avgs)
+    np.save(root_filename + "epca_2", epca_2_avgs)
+    np.save(root_filename + "rpca_1", rpca_1_avgs)
+    np.save(root_filename + "rpca_2", rpca_2_avgs)
 
     return (
         pca_1_avgs,
@@ -357,22 +358,20 @@ def outlier_comparison(
 def white_noise_comparison(
     data: np.ndarray,
     prefix: str,
-    epca_num_bags: int = 100,
-    epca_bag_size: int = 20,
-    divisors: List = [0.10, 1, 10, 100, 1000],
+    epca_dict: dict,
+    divisors: Optional[List] = None,
     num_runs: int = 5,
     num_trials: int = 5,
     white_type: str = "normal",
     run_rpca_condition: bool = True,
 ):
     """
-    Compare performance of all three methods on data corrupted with various amounts of white noise.
+    Gather performance of all three methods on data corrupted with various amounts of white noise.
 
     Args:
         data (np.ndarray): Input data.
         prefix (str): filepath to which to save data
-        epca_num_bags (int): Number of bags to use in EPCA.
-        epca_bag_size (int): Size of bags to use in EPCA.
+        epca_dict (dict): Arguments to use in EPCA.
         divsiors (List): Denominator of white noise scale.
         num_trials (int): Number of times to corrupt data at each scale.
         num_runs (int): Number of times to run each method on a corrupted data set.
@@ -385,6 +384,9 @@ def white_noise_comparison(
     true_components = pca.components_
 
     data_samples, _ = data.shape
+
+    if divisors is None:
+        divisors = [0.10, 1, 10, 100, 1000]
 
     # fig, axs = plt.subplots(2, 5, figsize=(25, 10))
     pca_1_avgs = []
@@ -441,8 +443,8 @@ def white_noise_comparison(
                 epca_pcs, _, _ = run_epca(
                     images=white_data,
                     num_components=2,
-                    num_bags=epca_num_bags,
-                    bag_size=epca_bag_size,
+                    num_bags=epca_dict.get("num_bags", 100),
+                    bag_size=epca_dict.get("bag_size", 20),
                 )
                 epca_map = match_components(true_components, epca_pcs)
                 epca_performance = score_performance(
@@ -478,7 +480,7 @@ def white_noise_comparison(
     )
 
 
-def load_comparison_data(prefixes: str):
+def load_comparison_data(root_filenames: str):
     """
     Load previously saved comparison data from various datasets.
     Return average performance across all datasets.
@@ -486,7 +488,7 @@ def load_comparison_data(prefixes: str):
     Args:
         prefixes (str): Filepath where comparison data is saved.
     """
-    loaded_example = np.load("saved_data/" + prefixes[0] + "pca_1.npy")
+    loaded_example = np.load("saved_data/" + root_filenames[0] + "pca_1.npy")
     num_entries = len(loaded_example)
 
     pca_1 = np.zeros(num_entries)
@@ -496,13 +498,13 @@ def load_comparison_data(prefixes: str):
     rpca_1 = np.zeros(num_entries)
     rpca_2 = np.zeros(num_entries)
 
-    for prefix in prefixes:
-        loaded_pca_1 = np.load("saved_data/" + prefix + "pca_1.npy")
-        loaded_pca_2 = np.load("saved_data/" + prefix + "pca_2.npy")
-        loaded_epca_1 = np.load("saved_data/" + prefix + "epca_1.npy")
-        loaded_epca_2 = np.load("saved_data/" + prefix + "epca_2.npy")
-        loaded_rpca_1 = np.load("saved_data/" + prefix + "rpca_1.npy")
-        loaded_rpca_2 = np.load("saved_data/" + prefix + "rpca_2.npy")
+    for root_filename in root_filenames:
+        loaded_pca_1 = np.load("saved_data/" + root_filename + "pca_1.npy")
+        loaded_pca_2 = np.load("saved_data/" + root_filename + "pca_2.npy")
+        loaded_epca_1 = np.load("saved_data/" + root_filename + "epca_1.npy")
+        loaded_epca_2 = np.load("saved_data/" + root_filename + "epca_2.npy")
+        loaded_rpca_1 = np.load("saved_data/" + root_filename + "rpca_1.npy")
+        loaded_rpca_2 = np.load("saved_data/" + root_filename + "rpca_2.npy")
 
         pca_1 += np.array(loaded_pca_1)
         pca_2 += np.array(loaded_pca_2)
@@ -511,29 +513,28 @@ def load_comparison_data(prefixes: str):
         rpca_1 += np.array(loaded_rpca_1)
         rpca_2 += np.array(loaded_rpca_2)
 
-    pca_1 = pca_1 / len(prefixes)
-    pca_2 = pca_2 / len(prefixes)
-    epca_1 = epca_1 / len(prefixes)
-    epca_2 = epca_2 / len(prefixes)
-    rpca_1 = rpca_1 / len(prefixes)
-    rpca_2 = rpca_2 / len(prefixes)
+    pca_1 = pca_1 / len(root_filenames)
+    pca_2 = pca_2 / len(root_filenames)
+    epca_1 = epca_1 / len(root_filenames)
+    epca_2 = epca_2 / len(root_filenames)
+    rpca_1 = rpca_1 / len(root_filenames)
+    rpca_2 = rpca_2 / len(root_filenames)
 
     return pca_1, pca_2, epca_1, epca_2, rpca_1, rpca_2
 
 
 def sparse_noise_comparison(
     data: np.ndarray,
-    prefix: str,
-    epca_num_bags: int = 100,
-    epca_bag_size=20,
-    sparse_noise_probs: List = [0.01, 0.05, 0.10],
-    sparse_noise_scales: List = [0, 2, 5, 10],
+    root_filepath: str,
+    epca_dict: dict,
+    sparse_noise_probs: Optional[List] = None,
+    sparse_noise_scales: Optional[List] = None,
     num_runs: int = 5,
     num_trials: int = 5,
     run_rpca_condition: bool = True,
 ):
     """
-     Compare performance of all three methods on data corrupted with
+     Gather performance of all three methods on data corrupted with
      various amounts of sparse noise.
 
     Args:
@@ -552,6 +553,11 @@ def sparse_noise_comparison(
     true_components = pca.components_
 
     data_samples, _ = data.shape
+
+    if sparse_noise_probs is None:
+        sparse_noise_probs = [0.01, 0.05, 0.10]
+    if sparse_noise_scales is None:
+        sparse_noise_scales = [0, 2, 5, 10]
 
     # fig, axs = plt.subplots(2, 5, figsize=(25, 10))
     pca_1_avgs = []
@@ -605,8 +611,8 @@ def sparse_noise_comparison(
                     epca_pcs, _, _ = run_epca(
                         images=sp_data,
                         num_components=2,
-                        num_bags=epca_num_bags,
-                        bag_size=epca_bag_size,
+                        num_bags=epca_dict.get("num_bags", 100),
+                        bag_size=epca_dict.get("bag_size", 20),
                     )
                     epca_map = match_components(true_components, epca_pcs)
                     epca_performance = score_performance(
@@ -625,12 +631,12 @@ def sparse_noise_comparison(
             rpca_1_avgs.append(np.average(rpca_1))
             rpca_2_avgs.append(np.average(rpca_2))
 
-    np.save(prefix + "pca_1", pca_1_avgs)
-    np.save(prefix + "pca_2", pca_2_avgs)
-    np.save(prefix + "epca_1", epca_1_avgs)
-    np.save(prefix + "epca_2", epca_2_avgs)
-    np.save(prefix + "rpca_1", rpca_1_avgs)
-    np.save(prefix + "rpca_2", rpca_2_avgs)
+    np.save(root_filepath + "pca_1", pca_1_avgs)
+    np.save(root_filepath + "pca_2", pca_2_avgs)
+    np.save(root_filepath + "epca_1", epca_1_avgs)
+    np.save(root_filepath + "epca_2", epca_2_avgs)
+    np.save(root_filepath + "rpca_1", rpca_1_avgs)
+    np.save(root_filepath + "rpca_2", rpca_2_avgs)
 
     return (
         pca_1_avgs,
