@@ -1,4 +1,4 @@
-"""Functions for plotting and running experiments."""
+"""Functions for running experiments."""
 import random
 import time
 from typing import Tuple, Optional, TypedDict, List
@@ -8,24 +8,44 @@ from sklearn.decomposition import PCA
 from scipy.signal import savgol_filter
 import numpy as np
 import matplotlib.pyplot as plt
-from EPCA import EPCA
+from EPCA.EPCA import EPCA
 
 
-def plot_components(components: np.ndarray, imsize: Optional[Tuple] = None):
-    """
-    Visualize PCA components:
+def create_noisy_datasets(
+    data,
+    sp_probability: float = 0.20,
+    sparse_num: float = 2,
+    uniform_white_variance: float = 2,
+    normal_white_variance: float = 2,
+    outlier_scale: float = 5,
+    outlier_percentage: float = 0.10,
+):
+    """Create all noisy datasets: salt and pepper, sparse, white, and outlier.
 
     Args:
-    components (np.ndarray): The PCA components to visualize
-    imsize(Optional[Tuple]): The shape of the component to be plotted. If none, the component is 1D.
+        sp_probability (float): Probability of the noise
+        sparse_num (float): Number to replace data entries
+        uniform_white_variance (float): Variance for uniform white noise
+        normal_white_variance (float): Variance for normal white noise
+        outlier_scale (float): Scale of the outliers.
+        outlier_percentage (float): Percent of outliers to add to the data.
     """
-    for component in components:
-        if imsize is None:
-            plt.figure()
-            plt.plot(component)
-        else:
-            plt.figure()
-            plt.imshow(component.reshape(imsize))
+    data_samples, _ = data.shape
+    normal_white_data = data + np.random.normal(
+        0, normal_white_variance, size=data.shape
+    )
+    uniform_white_data = data + uniform_white_variance * np.random.random(
+        size=data.shape
+    )
+    sp_data = sparse_noise(data, sp_probability, num=sparse_num)
+
+    ind = np.random.choice(
+        data_samples, int(np.round(data_samples * outlier_percentage)), replace=False
+    )
+    outlier_data = data.copy()
+    outlier_data[ind] = outlier_data[ind] * outlier_scale
+
+    return normal_white_data, uniform_white_data, sp_data, outlier_data
 
 
 def match_components(true_components: np.ndarray, pred_components: np.ndarray) -> dict:
@@ -53,17 +73,13 @@ def match_components(true_components: np.ndarray, pred_components: np.ndarray) -
     return pc_map
 
 
-def run_pca(images: np.ndarray, num_components: int, **kwargs):
+def run_pca(images: np.ndarray, num_components: int):
     """
     Run standard princpal component analysis on given data.
 
     Args:
         images (np.ndarray): Data.
         num_components (int): Number of components to compare against
-    Kwargs:
-        smoothing (bool): Whether or not to smooth the output
-        window_length (int):
-        poly_order (int):
     Returns
         pca_performance (List[float]): Accuracy of predicted PCA and true PCA components
         runtime (float): Runtime of PCA
@@ -78,20 +94,6 @@ def run_pca(images: np.ndarray, num_components: int, **kwargs):
 
     pred_components = pca.components_
     pred_svs = pca.explained_variance_
-
-    smoothing = kwargs.pop("smoothing", False)
-    if smoothing is True:
-        window_length = kwargs.pop("window_length", 51)
-        poly_order = kwargs.pop("poly_order", 3)
-
-        assert window_length % 2 == 1, "Window length must be odd"
-
-        pred_components = savgol_filter(
-            pca.components_,
-            window_length=window_length,
-            polyorder=poly_order,
-        )
-
     final_components = np.vstack((pred_components, pred_components * -1))
     final_svs = np.hstack((pred_svs, pred_svs))
     return final_components, final_svs, runtime
@@ -102,9 +104,6 @@ def run_epca(
     num_components: int,
     num_bags: int = 100,
     bag_size: int = 10,
-    smoothing: bool = False,
-    window_length: int = 51,
-    poly_order: int = 3,
 ):
     """
     Run ensemble PCA.
@@ -113,9 +112,6 @@ def run_epca(
         images (np.ndarray): Data.
         num_samples (int): Number of data bags to create.
         sample_size (int): Number of data samples in each of the bags.
-        smoothing (int): Whether or not to smooth the components.
-        window_length (int): Must be odd. Window length for smoothing.
-        poly_order (int): Polynomial order for smoothing.
     Returns:
         rpca_performance (List[float]): Accuracy of predicted EPCA and true PCA components
         runtime (float): Runtime of EPCA
@@ -125,9 +121,6 @@ def run_epca(
         num_components=num_components,
         num_bags=num_bags,
         bag_size=bag_size,
-        smoothing=smoothing,
-        window_length=window_length,
-        poly_order=poly_order,
     )
     epca.run_epca(images)
 
@@ -142,10 +135,6 @@ def run_rpca(images: np.ndarray, num_components: int, **kwargs):
 
     Args:
         images (np.ndarray): Data.
-    Kwargs:
-        smoothing (bool):
-        window_length (int):
-        poly_order (int):
     Returns:
         rpca_performance (List[float]): Accuracy of predicted RPCA and true PCA components.
         rpca_runtime (float): Runtime of RPCA
@@ -166,20 +155,6 @@ def run_rpca(images: np.ndarray, num_components: int, **kwargs):
 
     pred_components = rpca.components_
     pred_svs = rpca.explained_variance_
-
-    smoothing = kwargs.pop("smoothing", False)
-    if smoothing is True:
-        window_length = kwargs.pop("window_length", 51)
-        poly_order = kwargs.pop("polyorder", 3)
-
-        assert window_length % 2 == 1, "Window length must be odd"
-
-        pred_components = savgol_filter(
-            rpca.components_,
-            window_length=window_length,
-            polyorder=poly_order,
-        )
-
     final_components = np.vstack((pred_components, pred_components * -1))
     final_svs = np.hstack((pred_svs, pred_svs))
     return final_components, final_svs, np.round(runtime, 3)
@@ -290,12 +265,6 @@ def score_performance(
         ) / np.linalg.norm(true_component, 2)
         component_diff.append(difference * 100)
 
-    # for true_component in true_components:
-    #     difference = np.linalg.norm(true_component - pred_components, 2, axis=1)
-    #     diff.append(np.round(np.min(difference), 3))
-    #     # Ensure that a single predicted component is not matched to multiple true components
-    #     pred_components = np.delete(pred_components, np.argmin(difference), axis=0)
-
     return component_diff
 
 
@@ -339,9 +308,6 @@ def run_all_pca_methods(
             kwds={
                 "images": data,
                 "num_components": num_components,
-                "smoothing": pca_args.get("smoothing", False),
-                "window_length": pca_args.get("window_length", 51),
-                "poly_order": pca_args.get("poly_order", 3),
             },
         )
         pca_components, pca_svs, pca_runtime = res1.get(timeout=timeout)
@@ -365,9 +331,6 @@ def run_all_pca_methods(
                 "num_components": num_components,
                 "num_bags": epca_args.get("num_bags", 100),
                 "bag_size": epca_args.get("bag_size", 10),
-                "smoothing": epca_args.get("smoothing", False),
-                "window_length": epca_args.get("window_length", 51),
-                "poly_order": epca_args.get("poly_order", 3),
             },
         )
         epca_components, epca_svs, epca_runtime = res2.get(timeout=timeout)
@@ -394,8 +357,6 @@ def run_all_pca_methods(
                 "reg_J": rpca_args.get("reg_J", 1.0),
                 "learning_rate": rpca_args.get("learning_rate", 1.1),
                 "n_iter_max": rpca_args.get("n_iter_max", 50),
-                "window_legnth": rpca_args.get("window_length", 51),
-                "poly_order": rpca_args.get("poly_order", 3),
             },
         )
         rpca_components, rpca_svs, rpca_runtime = res3.get(timeout=timeout)

@@ -10,25 +10,25 @@ if __name__ == "__main__":
     images = np.array(images)
     labels = np.array(labels)
 
-    for integer in range(2):
+    NUM_TRIALS = 2
+
+    for integer in range(NUM_TRIALS):
         number = np.where(labels == integer)[0]
         og_data = images[number, :]
 
         pca_args = {}
         epca_args = {
-            "original": {"num_samples": 100, "smoothing": False, "sample_size": 100},
-            "sparse s&p": {"num_samples": 100, "smoothing": False, "sample_size": 100},
+            "original": {"num_samples": 100, "sample_size": 100},
+            "sparse s&p": {"num_samples": 100, "sample_size": 100},
             "uniform white": {
                 "num_samples": 100,
-                "smoothing": False,
                 "sample_size": 100,
             },
             "normal white": {
                 "num_samples": 100,
-                "smoothing": False,
                 "sample_size": 100,
             },
-            "outliers": {"num_samples": 100, "smoothing": False, "sample_size": 20},
+            "outliers": {"num_samples": 100, "sample_size": 20},
         }
         rpca_args = {"reg_E": 0.2}
 

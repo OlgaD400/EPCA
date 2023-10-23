@@ -1,13 +1,13 @@
 """Functions for generating figures."""
 
-from typing import List
+from typing import List, Optional, Tuple
 from sklearn.decomposition import PCA
 from matplotlib.lines import Line2D
 import numpy as np
 import seaborn as sns
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
-from EPCA import EPCA
+from EPCA.EPCA import EPCA
 from helper_functions import (
     sparse_noise,
     match_components,
@@ -18,41 +18,21 @@ from helper_functions import (
 )
 
 
-def create_noisy_datasets(
-    data,
-    sp_probability: float = 0.20,
-    sparse_num: float = 2,
-    uniform_white_variance: float = 2,
-    normal_white_variance: float = 2,
-    outlier_scale: float = 5,
-    outlier_percentage: float = 0.10,
-):
-    """Create all noisy datasets: salt and pepper, sparse, white, and outlier.
+def plot_components(components: np.ndarray, imsize: Optional[Tuple] = None):
+    """
+    Visualize PCA components:
 
     Args:
-        sp_probability (float): Probability of the noise
-        sparse_num (float): Number to replace data entries
-        uniform_white_variance (float): Variance for uniform white noise
-        normal_white_variance (float): Variance for normal white noise
-        outlier_scale (float): Scale of the outliers.
-        outlier_percentage (float): Percent of outliers to add to the data.
+    components (np.ndarray): The PCA components to visualize
+    imsize(Optional[Tuple]): The shape of the component to be plotted. If none, the component is 1D.
     """
-    data_samples, _ = data.shape
-    normal_white_data = data + np.random.normal(
-        0, normal_white_variance, size=data.shape
-    )
-    uniform_white_data = data + uniform_white_variance * np.random.random(
-        size=data.shape
-    )
-    sp_data = sparse_noise(data, sp_probability, num=sparse_num)
-
-    ind = np.random.choice(
-        data_samples, int(np.round(data_samples * outlier_percentage)), replace=False
-    )
-    outlier_data = data.copy()
-    outlier_data[ind] = outlier_data[ind] * outlier_scale
-
-    return normal_white_data, uniform_white_data, sp_data, outlier_data
+    for component in components:
+        if imsize is None:
+            plt.figure()
+            plt.plot(component)
+        else:
+            plt.figure()
+            plt.imshow(component.reshape(imsize))
 
 
 def plot_epca_trials(
@@ -251,7 +231,7 @@ def plot_compare_methods(
 
 
 def outlier_comparison(
-    data: np.ndaray,
+    data: np.ndarray,
     prefix: str,
     epca_num_bags: int = 100,
     epca_bag_size: int = 5,
@@ -498,28 +478,31 @@ def white_noise_comparison(
     )
 
 
-def load_comparison_data(prefixes: str, n: int):
+def load_comparison_data(prefixes: str):
     """
-    Load previously saved comparison data.
+    Load previously saved comparison data from various datasets.
+    Return average performance across all datasets.
 
     Args:
         prefixes (str): Filepath where comparison data is saved.
-        n (int)
     """
-    pca_1 = np.zeros(n)
-    pca_2 = np.zeros(n)
-    epca_1 = np.zeros(n)
-    epca_2 = np.zeros(n)
-    rpca_1 = np.zeros(n)
-    rpca_2 = np.zeros(n)
+    loaded_example = np.load("saved_data/" + prefixes[0] + "pca_1.npy")
+    num_entries = len(loaded_example)
+
+    pca_1 = np.zeros(num_entries)
+    pca_2 = np.zeros(num_entries)
+    epca_1 = np.zeros(num_entries)
+    epca_2 = np.zeros(num_entries)
+    rpca_1 = np.zeros(num_entries)
+    rpca_2 = np.zeros(num_entries)
 
     for prefix in prefixes:
-        loaded_pca_1 = np.load(prefix + "pca_1.npy")
-        loaded_pca_2 = np.load(prefix + "pca_2.npy")
-        loaded_epca_1 = np.load(prefix + "epca_1.npy")
-        loaded_epca_2 = np.load(prefix + "epca_2.npy")
-        loaded_rpca_1 = np.load(prefix + "rpca_1.npy")
-        loaded_rpca_2 = np.load(prefix + "rpca_2.npy")
+        loaded_pca_1 = np.load("saved_data/" + prefix + "pca_1.npy")
+        loaded_pca_2 = np.load("saved_data/" + prefix + "pca_2.npy")
+        loaded_epca_1 = np.load("saved_data/" + prefix + "epca_1.npy")
+        loaded_epca_2 = np.load("saved_data/" + prefix + "epca_2.npy")
+        loaded_rpca_1 = np.load("saved_data/" + prefix + "rpca_1.npy")
+        loaded_rpca_2 = np.load("saved_data/" + prefix + "rpca_2.npy")
 
         pca_1 += np.array(loaded_pca_1)
         pca_2 += np.array(loaded_pca_2)

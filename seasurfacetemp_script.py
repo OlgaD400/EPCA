@@ -1,7 +1,7 @@
 """Run analysis on sea surface temperature data."""
 import numpy as np
-from helper_functions import write_to_file
 from scipy.io import netcdf
+from helper_functions import write_to_file
 
 if __name__ == "__main__":
     # weekly SST data
@@ -14,33 +14,30 @@ if __name__ == "__main__":
     epca_args = {
         "original": {
             "num_samples": 100,
-            "smoothing": False,
             "sample_size": 20,
         },
         "sparse s&p": {
             "num_samples": 100,
-            "smoothing": False,
             "sample_size": 20,
         },
         "uniform white": {
             "num_samples": 100,
-            "smoothing": False,
             "sample_size": 20,
         },
         "normal white": {
             "num_samples": 100,
-            "smoothing": False,
             "sample_size": 20,
         },
         "outliers": {
             "num_samples": 100,
-            "smoothing": False,
             "sample_size": 20,
         },
     }
     rpca_args = {}
     pca_args = {}
-    for i in range(100):
+    NUM_TRIALS = 100
+
+    for i in range(NUM_TRIALS):
         write_to_file(
             original_data=temp["sst"].data,
             num_components=2,
