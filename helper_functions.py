@@ -16,7 +16,7 @@ def create_noisy_datasets(
     uniform_white_variance: float = 2,
     normal_white_variance: float = 2,
     outlier_scale: float = 5,
-    outlier_percentage: float = 0.10,
+    outlier_fraction: float = 0.10,
 ):
     """Create all noisy datasets: salt and pepper, sparse, white, and outlier.
 
@@ -26,22 +26,22 @@ def create_noisy_datasets(
         uniform_white_variance (float): Variance for uniform white noise
         normal_white_variance (float): Variance for normal white noise
         outlier_scale (float): Scale of the outliers.
-        outlier_percentage (float): Percent of outliers to add to the data.
+        outlier_fraction (float): Fraction of rows to turn into outliers.
     """
-    data_samples, _ = data.shape
-    normal_white_data = data + np.random.normal(
-        0, normal_white_variance, size=data.shape
+
+    normal_white_data = add_white_noise(
+        data=data, variance=normal_white_variance, noise_type="normal"
     )
-    uniform_white_data = data + uniform_white_variance * np.random.random(
-        size=data.shape
+
+    uniform_white_data = add_white_noise(
+        data=data, variance=uniform_white_variance, noise_type="uniform"
     )
+
     sp_data = add_sparse_noise(data, sp_probability, num=sparse_num)
 
-    ind = np.random.choice(
-        data_samples, int(np.round(data_samples * outlier_percentage)), replace=False
+    outlier_data = add_outliers(
+        data=data, outlier_fraction=outlier_fraction, outlier_scale=outlier_scale
     )
-    outlier_data = data.copy()
-    outlier_data[ind] = outlier_data[ind] * outlier_scale
 
     return normal_white_data, uniform_white_data, sp_data, outlier_data
 
@@ -95,7 +95,7 @@ def add_outliers(data: np.ndarray, outlier_fraction: float, outlier_scale: float
     return outlier_data
 
 
-def add_white_noise(data: np.ndarray, variance: float, type: str):
+def add_white_noise(data: np.ndarray, variance: float, noise_type: str):
     """
     Add either Gaussian or uniform white noise to data.
 
@@ -110,12 +110,12 @@ def add_white_noise(data: np.ndarray, variance: float, type: str):
 
     data_shape = data.shape
 
-    if type == "uniform":
+    if noise_type == "uniform":
         white_noise_data = data + variance * np.random.random(size=data.shape)
         white_noise_data = white_noise_data.reshape((data_shape, -1))
 
     # add normal white noise
-    elif type == "normal":
+    elif noise_type == "normal":
         white_noise_data = data + np.random.normal(0, variance, size=data.shape)
         white_noise_data = white_noise_data.reshape((data_shape, -1))
 
@@ -155,8 +155,11 @@ def run_pca(images: np.ndarray, num_components: int):
         images (np.ndarray): Data.
         num_components (int): Number of components to compare against
     Returns
-        pca_performance (List[float]): Accuracy of predicted PCA and true PCA components
-        runtime (float): Runtime of PCA
+        final_components (np.ndarray): Predicted components stacked along
+            with their reflections.
+        final_explained_variance (np.ndarray): Predicted explained_variance
+            associated with final components.
+        runtime (float): Runtime of PCA.
     """
     start_time = time.time()
 
@@ -167,10 +170,12 @@ def run_pca(images: np.ndarray, num_components: int):
     runtime = time.time() - start_time
 
     pred_components = pca.components_
-    pred_svs = pca.explained_variance_
+    pred_explained_variance = pca.explained_variance_
     final_components = np.vstack((pred_components, pred_components * -1))
-    final_svs = np.hstack((pred_svs, pred_svs))
-    return final_components, final_svs, runtime
+    final_explained_variance = np.hstack(
+        (pred_explained_variance, pred_explained_variance)
+    )
+    return final_components, final_explained_variance, runtime
 
 
 def run_epca(
@@ -186,9 +191,10 @@ def run_epca(
         images (np.ndarray): Data.
         num_samples (int): Number of data bags to create.
         sample_size (int): Number of data samples in each of the bags.
-    Returns:
-        rpca_performance (List[float]): Accuracy of predicted EPCA and true PCA components
-        runtime (float): Runtime of EPCA
+    Returns
+        epca.centers (np.ndarray): Predicted components stacked along with their reflections.
+        epca.avg_explained_variance (np.ndarray): Predicted explained_variance associated with final components.
+        runtime (float): Runtime of EPCA.
     """
     start_time = time.time()
     epca = EPCA(
@@ -205,13 +211,16 @@ def run_epca(
 
 def run_rpca(images: np.ndarray, num_components: int, **kwargs):
     """
-    Run robust PCA.
+    Run Robust PCA (RPCA).
 
     Args:
         images (np.ndarray): Data.
     Returns:
-        rpca_performance (List[float]): Accuracy of predicted RPCA and true PCA components.
-        rpca_runtime (float): Runtime of RPCA
+        final_components (np.ndarray): Predicted components stacked along
+            with their reflections.
+        final_explained_variance (np.ndarray): Predicted explained_variance
+            associated with final components.
+        runtime (float): Runtime of RPCA.
     """
     start_time = time.time()
     low_rank_part, _ = robust_pca(
@@ -228,10 +237,12 @@ def run_rpca(images: np.ndarray, num_components: int, **kwargs):
     rpca.fit(low_rank_part)
 
     pred_components = rpca.components_
-    pred_svs = rpca.explained_variance_
+    pred_explained_variance = rpca.explained_variance_
     final_components = np.vstack((pred_components, pred_components * -1))
-    final_svs = np.hstack((pred_svs, pred_svs))
-    return final_components, final_svs, np.round(runtime, 3)
+    final_explained_variance = np.hstack(
+        (pred_explained_variance, pred_explained_variance)
+    )
+    return final_components, final_explained_variance, np.round(runtime, 3)
 
 
 def score_performance(
@@ -246,11 +257,9 @@ def score_performance(
     Args:
         true_components (np.ndarray): The true PCA components to be matched.
         pred_components (np.ndarray): Predicted PCA components.
-        true_svs (np.ndarray): True singular values
-        pred_svs (np.ndarray): Pred singular values
 
     Returns:
-        diff (List[float]): List containing the minimum difference between each
+        component_diff (List[float]): List containing the percent relative error between each
         matched true and predicted PCA component.
     """
     component_diff = []
@@ -450,7 +459,7 @@ def write_to_file(
         uniform_white_variance = sv_1 / variance_divisor
         print("Creating uniform white noise")
         uniform_white_data = add_white_noise(
-            data=original_data, variance=uniform_white_variance, type="uniform"
+            data=original_data, variance=uniform_white_variance, noise_type="uniform"
         )
         print("Created uniform white noise")
         data_types.append("uniform white")
@@ -461,7 +470,7 @@ def write_to_file(
         normal_white_variance = sv_1 / variance_divisor
         print("Creating normal white noise")
         normal_white_data = add_white_noise(
-            data=original_data, variance=normal_white_variance, type="normal"
+            data=original_data, variance=normal_white_variance, noise_type="normal"
         )
         print("Created normal white noise")
         data_types.append("normal white")
