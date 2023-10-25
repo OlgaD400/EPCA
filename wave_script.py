@@ -17,25 +17,28 @@ if __name__ == "__main__":
     X, T = np.meshgrid(x_space, t_space)
 
     DATA = f(X, T)
-    NUM_TRIALS = 2
 
+    # Define parameters for EPCA, PCA, and RPCA.
+    epca_args = {
+        "original": {"num_samples": 100, "sample_size": 20},
+        "sparse": {"num_samples": 100, "sample_size": 20},
+        "uniform white": {
+            "num_samples": 100,
+            "sample_size": 20,
+        },
+        "normal white": {"num_samples": 100, "sample_size": 20},
+        "outliers": {"num_samples": 100, "sample_size": 5},
+    }
+    rpca_args = {"reg_E": 0.2}
+    pca_args = {}
+
+    # Run experiments.
+    NUM_TRIALS = 100
     for i in range(NUM_TRIALS):
         FILENAME = (
             "temp.txt"  # "wave_data/wave_data_rel_error_trial_" + str(i) + ".txt"
         )
 
-        epca_args = {
-            "original": {"num_samples": 100, "sample_size": 20},
-            "sparse": {"num_samples": 100, "sample_size": 20},
-            "uniform white": {
-                "num_samples": 100,
-                "sample_size": 20,
-            },
-            "normal white": {"num_samples": 100, "sample_size": 20},
-            "outliers": {"num_samples": 100, "sample_size": 5},
-        }
-        rpca_args = {"reg_E": 0.2}
-        pca_args = {}
         write_to_file(
             original_data=DATA,
             num_components=2,

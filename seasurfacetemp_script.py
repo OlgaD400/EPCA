@@ -4,6 +4,7 @@ from scipy.io import netcdf
 from helper_functions import write_to_file
 
 if __name__ == "__main__":
+    # Load data.
     # weekly SST data
     sst_dictionary = netcdf.NetCDFFile("data/sst.wkmean.1990-present.nc", "r").variables
     # land-sea mask
@@ -11,6 +12,7 @@ if __name__ == "__main__":
     mask = mask.astype(float)
     mask[mask == 0] = np.nan
 
+    # Define parameters for EPCA, RPCA, PCA.
     epca_args = {
         "original": {
             "num_samples": 100,
@@ -37,6 +39,7 @@ if __name__ == "__main__":
     pca_args = {}
     NUM_TRIALS = 100
 
+    # Run experiments.
     for i in range(NUM_TRIALS):
         write_to_file(
             original_data=sst_dictionary["sst"].data,

@@ -1,8 +1,7 @@
 """Run varied noise experiments."""
 from varied_noise import run_varied_noise_experiments
 
-
-################ Sklearn Datasets ##############
+# Set datasets and noise types to True to run varied noise level experiments of said type on said datasets.
 run_varied_noise_experiments(
     sklearn=True,
     wave=True,

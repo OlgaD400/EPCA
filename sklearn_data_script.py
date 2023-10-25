@@ -4,6 +4,7 @@ from sklearn import datasets
 from helper_functions import write_to_file
 
 if __name__ == "__main__":
+    # Load data.
     data_dict = {
         "iris": datasets.load_iris(),
         "wine": datasets.load_wine(),
@@ -12,6 +13,7 @@ if __name__ == "__main__":
 
     number_of_components = [2, 2, 2, 2]
 
+    # Define parameters for EPCA, PCA, and RPCA.
     for index, dataset in enumerate(data_dict.keys()):
         loaded_data = data_dict[dataset]
         data = loaded_data.data
@@ -43,8 +45,8 @@ if __name__ == "__main__":
         rpca_args = {"reg_E": 0.2}
         pca_args = {}
 
-        NUM_TRIALS = 10
-
+        # Run experiments.
+        NUM_TRIALS = 100
         for i in range(NUM_TRIALS):
             filename = (
                 dataset
