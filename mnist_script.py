@@ -10,9 +10,7 @@ if __name__ == "__main__":
     images = np.array(images)
     labels = np.array(labels)
 
-    NUM_TRIALS = 1
-
-    for integer in range(NUM_TRIALS):
+    for integer in range(2):
         number = np.where(labels == integer)[0]
         og_data = images[number, :]
 

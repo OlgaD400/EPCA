@@ -179,7 +179,7 @@ def run_pca(images: np.ndarray, num_components: int):
 
 
 def run_epca(
-    images: np.ndarray,
+    data: np.ndarray,
     num_components: int,
     num_bags: int = 100,
     bag_size: int = 10,
@@ -202,7 +202,7 @@ def run_epca(
         num_bags=num_bags,
         bag_size=bag_size,
     )
-    epca.run_epca(images)
+    epca.run_epca(data)
 
     runtime = time.time() - start_time
 

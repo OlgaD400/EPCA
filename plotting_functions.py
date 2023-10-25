@@ -1,20 +1,20 @@
 """Functions for generating figures."""
 
 from typing import List, Optional, Tuple
-from sklearn.decomposition import PCA
 from matplotlib.lines import Line2D
+import matplotlib.lines as mlines
+import matplotlib.patches as mpatches
+from matplotlib.gridspec import GridSpec
 import numpy as np
 import seaborn as sns
+import pandas as pd
 import matplotlib.pyplot as plt
-import matplotlib.patches as mpatches
 from EPCA.EPCA import EPCA
 from helper_functions import (
-    add_sparse_noise,
     match_components,
     run_epca,
     run_pca,
     run_rpca,
-    score_performance,
 )
 
 
@@ -172,7 +172,7 @@ def plot_compare_methods(
     if epca_args is not None:
         ####### EPCA ###############
         epca_pred_components, _, _ = run_epca(
-            images=input_data,
+            data=input_data,
             num_components=num_components,
             num_bags=epca_args.get("num_bags", 100),
             bag_size=epca_args.get("bag_size", 10),
@@ -203,6 +203,7 @@ def plot_compare_methods(
 
     for index in range(num_components):
         axs[index].plot(true_components[index], c="r", label="True")
+        axs[index].set_title("PC " + str(index + 1))
         if epca_args is not None:
             axs[index].plot(
                 epca_pred_components[epca_map[index]],
@@ -228,421 +229,395 @@ def plot_compare_methods(
     return fig
 
 
-def outlier_comparison(
-    data: np.ndarray,
-    root_filename: str,
-    epca_args: dict,
-    outlier_fractions: Optional[List] = None,
-    outlier_scales: Optional[List] = None,
-    num_runs: int = 5,
-    num_trials: int = 5,
-    run_rpca_condition: bool = True,
+def plot_varied_levels_noise(
+    first_component_performance: List[np.ndarray],
+    second_component_performance: List[np.ndarray],
+    feature_1: List,
+    feature_2: List,
+    subfigure_title: str,
+    subfigure_caption: str,
+    suptitle: str,
+    filepath: str,
+    **kwargs
 ):
     """
-    Gather performance of all three methods on data corrupted with various amounts of outliers.
+    Make and save varied noise level plots.
 
     Args:
-        data (np.ndarray): Input data.
-        prefix (str): filepath to which to save data
-        epca_args (dict): Arguments for EPCA.
-        outlier_fraction (List): Fraction of outliers to add to data.
-        outlier_scale (List): Scale of outliers to add to data.
-        num_trials (int): Number of times to corrupt data at each scale.
-        num_runs (int): Number of times to run each method on a corrupted data set.
-        run_rpca_condition (bool): Whether or not to run RPCA (avoid timeout).
+        first_component_performance (List[np.ndarray]): Performance of first components. Must be in order pca, rpca, epca.
+        second_component_performance (List[np.ndarray]): Performance of second components. Must be in order pca, rpca, epca.
+        feature_1 (List): List of values that will determine the number of columns in the plot.
+            Will also be used with "subfigure title" to title the columns.
+        feature_2 (List): List of values that will determine the number of markers in a subfigure.
+        subfigure_title (str): Title of each subfigure. "subfigure_title" + ' ' + feature_1[column] denotes a column's title.
+        subfigure_caption (str): x label of each subfigure column
+        suptitle (str): Title of the entire figure
+        filepath (str): Filepath to save the figure to. Do not enclode file extension. Automatically saved as eps.
+
+    Kwargs:
+        title_size (float): Size of suptitle.
+        text_size (float): Size of text in axis labels
+        marker_size (float): Plot marker size
+        axis_pad (float): Axis padding.
+        figsize (Tuple[int]): Figure size.
+        y1_step (float): Step size of y axis labels for first row.
+        y2_step (float): Step size of y axis labels for second row.
+
+    Returns:
+        fig: Figure
+        axs: Axes associated with the figure.
     """
-    pca = PCA(n_components=2)
-    pca.fit(data)
-    true_components = pca.components_
+    title_size = kwargs.get("title_size", 30)
+    text_size = kwargs.get("text_size", 25)
+    marker_size = kwargs.get("marker_size", 10)
+    axis_pad = kwargs.get("axis_pad", 20)
+    figsize = kwargs.get("figsize", (20, 10))
+    y1_step = kwargs.get("y1_step", 10)
+    y2_step = kwargs.get("y2_step", 20)
 
-    data_samples, _ = data.shape
+    pca_1, rpca_1, epca_1 = first_component_performance
+    pca_2, rpca_2, epca_2 = second_component_performance
 
-    if outlier_fractions is None:
-        outlier_fractions = [0.01, 0.05, 0.10, 0.15, 0.20, 0.25]
-    if outlier_scales is None:
-        outlier_scales = [2, 5, 10, 20, 100]
+    max_y1 = int(np.max(np.concatenate(first_component_performance)) + 1)
+    max_y2 = int(np.max(np.concatenate(second_component_performance)) + 1)
 
-    # fig, axs = plt.subplots(2, 5, figsize=(25, 10))
-    pca_1_avgs = []
-    pca_2_avgs = []
+    fig, axs = plt.subplots(2, len(feature_1), figsize=figsize, sharey="row")
+    locations = np.arange(len(feature_2))
 
-    epca_1_avgs = []
-    epca_2_avgs = []
+    axs[0, 0].set_ylabel("Avg. % Relative Error", size=text_size, labelpad=axis_pad)
+    axs[1, 0].set_ylabel("Avg. % Relative Error", size=text_size, labelpad=axis_pad)
 
-    rpca_1_avgs = []
-    rpca_2_avgs = []
+    num_markers = len(feature_2)
+    num_cols = len(feature_1)
 
-    for outlier_scale in outlier_scales:
-        for outlier_fraction in outlier_fractions:
-            epca_1 = []
-            epca_2 = []
+    for index in range(num_cols):
+        axs[0, index].plot(
+            locations,
+            epca_1[index * num_markers : index * num_markers + num_markers],
+            "-o",
+            c="tab:orange",
+            markersize=marker_size,
+        )
 
-            pca_1 = []
-            pca_2 = []
+        axs[0, index].plot(
+            locations,
+            pca_1[index * num_markers : index * num_markers + num_markers],
+            "x-",
+            c="tab:blue",
+            markersize=marker_size,
+        )
 
-            rpca_1 = []
-            rpca_2 = []
+        axs[0, index].plot(
+            locations,
+            rpca_1[index * num_markers : index * num_markers + num_markers],
+            "-v",
+            c="tab:green",
+            markersize=marker_size,
+        )
 
-            for _ in range(num_trials):
-                ind = np.random.choice(
-                    data_samples,
-                    int(np.round(data_samples * outlier_fraction)),
-                    replace=False,
-                )
-                outlier_data = data.copy()
-                outlier_data[ind] = outlier_data[ind] * outlier_scale
-                outlier_data = outlier_data.reshape((data_samples, -1))
+        axs[0, index].set_title(
+            subfigure_title + " " + str(feature_1[index]), size=text_size
+        )
 
-                pca_pcs, _, _ = run_pca(images=outlier_data, num_components=2)
-                pca_map = match_components(true_components, pca_pcs)
-                pca_performance = score_performance(true_components, pca_pcs, pca_map)
-                pca_1.append(pca_performance[0])
-                pca_2.append(pca_performance[1])
+        axs[1, index].plot(
+            locations,
+            epca_2[index * num_markers : index * num_markers + num_markers],
+            "-o",
+            c="tab:orange",
+            markersize=marker_size,
+        )
+        axs[1, index].plot(
+            locations,
+            pca_2[index * num_markers : index * num_markers + num_markers],
+            "x-",
+            c="tab:blue",
+            markersize=marker_size,
+        )
+        axs[1, index].plot(
+            locations,
+            rpca_2[index * num_markers : index * num_markers + num_markers],
+            "-v",
+            c="tab:green",
+            markersize=marker_size,
+        )
+        #     axs[1, index].set_ylabel("Avg. % Relative Error", size = 30)
+        axs[1, index].set_xlabel(subfigure_caption, size=text_size, labelpad=axis_pad)
 
-                if run_rpca_condition is True:
-                    rpca_pcs, _, _ = run_rpca(
-                        images=outlier_data, num_components=2, reg_E=0.2
-                    )
-                    rpca_map = match_components(true_components, rpca_pcs)
-                    rpca_performance = score_performance(
-                        true_components, rpca_pcs, rpca_map
-                    )
+        axs[0, index].set_xticks(ticks=locations, labels=feature_2, size=20)
+        axs[1, index].set_xticks(ticks=locations, labels=feature_2, size=20)
 
-                    rpca_1.append(rpca_performance[0])
-                    rpca_2.append(rpca_performance[1])
-                else:
-                    rpca_1.append(0)
-                    rpca_2.append(0)
+        axs[0, index].set_yticks(
+            ticks=np.arange(0, max_y1, y1_step),
+            labels=np.arange(0, max_y1, y1_step),
+            size=text_size,
+        )
+        axs[1, index].set_yticks(
+            ticks=np.arange(0, max_y2, y2_step),
+            labels=np.arange(0, max_y2, y2_step),
+            size=text_size,
+        )
 
-                for _ in range(num_runs):
-                    epca_pcs, _, _ = run_epca(
-                        images=outlier_data,
-                        num_components=2,
-                        num_bags=epca_args.get("num_bags", 100),
-                        bag_size=epca_args.get("bag_size", 5),
-                    )
-                    epca_map = match_components(true_components, epca_pcs)
-                    epca_performance = score_performance(
-                        true_components, epca_pcs, epca_map
-                    )
+    plt.suptitle(suptitle, fontsize=title_size)
 
-                    epca_1.append(epca_performance[0])
-                    epca_2.append(epca_performance[1])
-
-            pca_1_avgs.append(np.average(pca_1))
-            pca_2_avgs.append(np.average(pca_2))
-
-            epca_1_avgs.append(np.average(epca_1))
-            epca_2_avgs.append(np.average(epca_2))
-
-            rpca_1_avgs.append(np.average(rpca_1))
-            rpca_2_avgs.append(np.average(rpca_2))
-
-    np.save(root_filename + "pca_1", pca_1_avgs)
-    np.save(root_filename + "pca_2", pca_2_avgs)
-    np.save(root_filename + "epca_1", epca_1_avgs)
-    np.save(root_filename + "epca_2", epca_2_avgs)
-    np.save(root_filename + "rpca_1", rpca_1_avgs)
-    np.save(root_filename + "rpca_2", rpca_2_avgs)
-
-    return (
-        pca_1_avgs,
-        pca_2_avgs,
-        epca_1_avgs,
-        epca_2_avgs,
-        rpca_1_avgs,
-        rpca_2_avgs,
+    # Legend
+    red_patch = mlines.Line2D(
+        [],
+        [],
+        color="tab:blue",
+        marker="x",
+        linestyle="-",
+        markersize=marker_size,
+        label="PCA",
+    )
+    blue_patch = mlines.Line2D(
+        [],
+        [],
+        color="tab:orange",
+        marker="o",
+        linestyle="-",
+        markersize=marker_size,
+        label="EPCA",
+    )
+    green_patch = mlines.Line2D(
+        [],
+        [],
+        color="tab:green",
+        marker="v",
+        linestyle="-",
+        markersize=marker_size,
+        label="RPCA",
+    )
+    axs[1, len(feature_1) - 1].legend(
+        handles=[red_patch, blue_patch, green_patch],
+        loc="lower right",
+        fontsize=text_size,
     )
 
+    rows = ["PC {}".format(row) for row in ["1", "2"]]
+    pad = 5  # in points
+    for ax, row in zip(axs[:, 0], rows):
+        ax.annotate(
+            row,
+            xy=(0, 0.5),
+            xytext=(-ax.yaxis.labelpad - pad, 0),
+            xycoords=ax.yaxis.label,
+            textcoords="offset points",
+            size=text_size,
+            ha="right",
+            va="center",
+        )
 
-def white_noise_comparison(
-    data: np.ndarray,
-    prefix: str,
-    epca_dict: dict,
-    divisors: Optional[List] = None,
-    num_runs: int = 5,
-    num_trials: int = 5,
-    white_type: str = "normal",
-    run_rpca_condition: bool = True,
+    # plt.subplots_adjust(
+    #                     wspace=.4,
+    #                     hspace=.2)
+
+    plt.savefig(filepath + ".eps", format="eps", bbox_inches="tight")
+
+    return fig, axs
+
+
+def relative_error_plot(
+    num_trials: int, filename_roots: List[str], filepath: str, **kwargs
 ):
     """
-    Gather performance of all three methods on data corrupted with various amounts of white noise.
+    Generate and save plot of relative error in principal components for all methods in different noise domains.
 
     Args:
-        data (np.ndarray): Input data.
-        prefix (str): filepath to which to save data
-        epca_dict (dict): Arguments to use in EPCA.
-        divsiors (List): Denominator of white noise scale.
-        num_trials (int): Number of times to corrupt data at each scale.
-        num_runs (int): Number of times to run each method on a corrupted data set.
-        white_type: "normal" or "uniform" white noise
-        run_rpca_condition (bool): Whether or not to run rpca (avoid timeout).
+        num_trials (int) Number of trials for which to plot data.
+        filename_roots (List[str]): List of root filenames for the datasets.
+        filepath (str): Filepath to save image to. Do not include file extension.
+            Extension is automatically .eps.
+    Kwargs:
+        figsize (Tuple(int)) Figure size.
     """
-    pca = PCA(n_components=2)
-    pca.fit(data)
-    sv1 = pca.singular_values_[0]
-    true_components = pca.components_
+    corruptions = ["sparse s&p", "uniform white", "normal white", "outliers"]
+    methods = [" pca_performance", " epca_performance", " rpca_performance"]
 
-    data_samples, _ = data.shape
+    figsize = kwargs.get("figsize", (24, 16))
 
-    if divisors is None:
-        divisors = [0.10, 1, 10, 100, 1000]
+    fig = plt.figure(figsize=figsize)
+    spacing = 4
+    vspace = 4
+    gs = GridSpec(spacing * 2 + 3, spacing * 4 + 1)
 
-    # fig, axs = plt.subplots(2, 5, figsize=(25, 10))
-    pca_1_avgs = []
-    pca_2_avgs = []
+    for corruption_index, corruption in enumerate(corruptions):
+        pc1 = [[], [], []]
 
-    epca_1_avgs = []
-    epca_2_avgs = []
+        pc2 = [[], [], []]
 
-    rpca_1_avgs = []
-    rpca_2_avgs = []
+        for trial_num in range(num_trials):
+            filenames = [
+                filename_root + str(trial_num) + ".txt"
+                for _, filename_root in enumerate(filename_roots)
+            ]
 
-    for divisor in divisors:
-        epca_1 = []
-        epca_2 = []
+            for filename in filenames:
+                try:
+                    df = pd.read_csv(filename, header=0, sep=";", index_col=False)
+                    for j, method in enumerate(methods):
+                        performance = (
+                            df[df["data"] == corruption][method]
+                            .item()
+                            .strip("] [")
+                            .split(",")
+                        )
+                        performance = [float(item) for item in performance]
+                        if len(performance) >= 2:
+                            pc1[j].append(performance[0])
+                            pc2[j].append(performance[1])
+                        else:
+                            pc1[j].append(np.nan)
+                            pc2[j].append(np.nan)
+                except:
+                    continue
 
-        pca_1 = []
-        pca_2 = []
+        df1 = pd.DataFrame(np.array(pc1).T, columns=["PCA", "EPCA", "RPCA"])
+        df2 = pd.DataFrame(np.array(pc2).T, columns=["PCA", "EPCA", "RPCA"])
 
-        rpca_1 = []
-        rpca_2 = []
+        if corruption_index == 0:
+            ax1 = fig.add_subplot(gs[1 : vspace + 1, 0:spacing])
+            ax2 = fig.add_subplot(
+                gs[1 : vspace + 1, spacing : spacing * 2]
+            )  # ,sharey=ax1)
 
-        for _ in range(num_trials):
-            variance = sv1 / divisor
+            axtitle = fig.add_subplot(gs[0, 0 : spacing * 2])
+            axtitle.axis("off")
+            axtitle.set_title("(a) Sparse Noise", fontsize=30)
 
-            if white_type == "uniform":
-                white_data = data + variance * np.random.random(size=data.shape)
-                white_data = white_data.reshape((data_samples, -1))
-            elif white_type == "normal":
-                white_data = data + np.random.normal(0, variance, size=data.shape)
-                white_data = white_data.reshape((data_samples, -1))
+        elif corruption_index == 1:
+            ax1 = fig.add_subplot(
+                gs[
+                    1 : vspace + 1 : spacing * 3 + 1 + 1,
+                    spacing * 2 + 1 : spacing * 3 + 1,
+                ]
+            )
+            ax2 = fig.add_subplot(gs[1 : vspace + 1, spacing * 3 + 1 :])  # ,sharey=ax1)
 
-            pca_pcs, _, _ = run_pca(images=white_data, num_components=2)
-            pca_map = match_components(true_components, pca_pcs)
-            pca_performance = score_performance(true_components, pca_pcs, pca_map)
-            pca_1.append(pca_performance[0])
-            pca_2.append(pca_performance[1])
+            axtitle = fig.add_subplot(gs[0, spacing * 2 + 1 :])
+            axtitle.axis("off")
+            axtitle.set_title("(b) Uniform White Noise", fontsize=30)
 
-            if run_rpca_condition is True:
-                rpca_pcs, _, _ = run_rpca(
-                    images=white_data, num_components=2, reg_E=0.2
-                )
-                rpca_map = match_components(true_components, rpca_pcs)
-                rpca_performance = score_performance(
-                    true_components, rpca_pcs, rpca_map
-                )
+        elif corruption_index == 2:
+            ax1 = fig.add_subplot(gs[vspace + 3 : vspace * 2 + 3, 0:spacing])
+            ax2 = fig.add_subplot(
+                gs[vspace + 3 : vspace * 2 + 3, spacing : spacing * 2]
+            )  # ,sharey=ax1)
 
-                rpca_1.append(rpca_performance[0])
-                rpca_2.append(rpca_performance[1])
-            else:
-                rpca_1.append(0)
-                rpca_2.append(0)
+            axtitle = fig.add_subplot(gs[vspace + 2, 0 : spacing * 2])
+            axtitle.axis("off")
+            axtitle.set_title("(c) Normal White Noise", fontsize=30)
 
-            for _ in range(num_runs):
-                epca_pcs, _, _ = run_epca(
-                    images=white_data,
-                    num_components=2,
-                    num_bags=epca_dict.get("num_bags", 100),
-                    bag_size=epca_dict.get("bag_size", 20),
-                )
-                epca_map = match_components(true_components, epca_pcs)
-                epca_performance = score_performance(
-                    true_components, epca_pcs, epca_map
-                )
+        elif corruption_index == 3:
+            ax1 = fig.add_subplot(
+                gs[vspace + 3 : vspace * 2 + 3, spacing * 2 + 1 : spacing * 3 + 1]
+            )
+            ax2 = fig.add_subplot(
+                gs[vspace + 3 : vspace * 2 + 3, spacing * 3 + 1 :]
+            )  # ,sharey=ax1)
 
-                epca_1.append(epca_performance[0])
-                epca_2.append(epca_performance[1])
+            axtitle = fig.add_subplot(gs[vspace + 2, spacing * 2 + 1 :])
+            axtitle.axis("off")
+            axtitle.set_title("(d) Outliers", fontsize=30)
 
-        pca_1_avgs.append(np.average(pca_1))
-        pca_2_avgs.append(np.average(pca_2))
+        ax1.set_title("PC 1", size=30)
+        ax2.set_title("PC 2", size=30)
+        ax1.set_ylabel("% Relative Error", size=30)
 
-        epca_1_avgs.append(np.average(epca_1))
-        epca_2_avgs.append(np.average(epca_2))
+        sns.boxplot(data=df1, ax=ax1, showfliers=False)
+        sns.boxplot(data=df2, ax=ax2, showfliers=False)
 
-        rpca_1_avgs.append(np.average(rpca_1))
-        rpca_2_avgs.append(np.average(rpca_2))
+        ax1.tick_params(axis="y", which="major", labelsize=25)
+        ax1.tick_params(axis="x", which="major", labelsize=25)
+        ax2.tick_params(axis="x", which="major", labelsize=25)
+        ax2.tick_params(axis="y", which="major", labelsize=25)
 
-    np.save(prefix + "pca_1", pca_1_avgs)
-    np.save(prefix + "pca_2", pca_2_avgs)
-    np.save(prefix + "epca_1", epca_1_avgs)
-    np.save(prefix + "epca_2", epca_2_avgs)
-    np.save(prefix + "rpca_1", rpca_1_avgs)
-    np.save(prefix + "rpca_2", rpca_2_avgs)
+    plt.subplots_adjust(wspace=3, hspace=1)
 
-    return (
-        pca_1_avgs,
-        pca_2_avgs,
-        epca_1_avgs,
-        epca_2_avgs,
-        rpca_1_avgs,
-        rpca_2_avgs,
-    )
+    plt.savefig(filepath + ".eps", format="eps", bbox_inches="tight")
 
+    plt.show()
 
-def load_comparison_data(root_filenames: str):
-    """
-    Load previously saved comparison data from various datasets.
-    Return average performance across all datasets.
-
-    Args:
-        prefixes (str): Filepath where comparison data is saved.
-    """
-    loaded_example = np.load("saved_data/" + root_filenames[0] + "pca_1.npy")
-    num_entries = len(loaded_example)
-
-    pca_1 = np.zeros(num_entries)
-    pca_2 = np.zeros(num_entries)
-    epca_1 = np.zeros(num_entries)
-    epca_2 = np.zeros(num_entries)
-    rpca_1 = np.zeros(num_entries)
-    rpca_2 = np.zeros(num_entries)
-
-    for root_filename in root_filenames:
-        loaded_pca_1 = np.load("saved_data/" + root_filename + "pca_1.npy")
-        loaded_pca_2 = np.load("saved_data/" + root_filename + "pca_2.npy")
-        loaded_epca_1 = np.load("saved_data/" + root_filename + "epca_1.npy")
-        loaded_epca_2 = np.load("saved_data/" + root_filename + "epca_2.npy")
-        loaded_rpca_1 = np.load("saved_data/" + root_filename + "rpca_1.npy")
-        loaded_rpca_2 = np.load("saved_data/" + root_filename + "rpca_2.npy")
-
-        pca_1 += np.array(loaded_pca_1)
-        pca_2 += np.array(loaded_pca_2)
-        epca_1 += np.array(loaded_epca_1)
-        epca_2 += np.array(loaded_epca_2)
-        rpca_1 += np.array(loaded_rpca_1)
-        rpca_2 += np.array(loaded_rpca_2)
-
-    pca_1 = pca_1 / len(root_filenames)
-    pca_2 = pca_2 / len(root_filenames)
-    epca_1 = epca_1 / len(root_filenames)
-    epca_2 = epca_2 / len(root_filenames)
-    rpca_1 = rpca_1 / len(root_filenames)
-    rpca_2 = rpca_2 / len(root_filenames)
-
-    return pca_1, pca_2, epca_1, epca_2, rpca_1, rpca_2
+    return fig
 
 
-def sparse_noise_comparison(
-    data: np.ndarray,
-    root_filepath: str,
-    epca_dict: dict,
-    sparse_noise_probs: Optional[List] = None,
-    sparse_noise_scales: Optional[List] = None,
-    num_runs: int = 5,
-    num_trials: int = 5,
-    run_rpca_condition: bool = True,
+def runtime_summary_plot(
+    num_trials: int,
+    filepath: str,
+    datasets: List[str],
+    root_filenames=List[str],
+    **kwargs
 ):
     """
-     Gather performance of all three methods on data corrupted with
-     various amounts of sparse noise.
 
-    Args:
-        data (np.ndarray): Input data.
-        prefix (str): filepath to which to save data
-        epca_num_bags (int): Number of bags to use in EPCA.
-        epca_bag_size (int): Size of bags to use in EPCA.
-        sparse_noise_probs (List): Probability of sparse noise to add to data.
-        sparse_noise_scale (List): Scale of spare noise to add to data.
-        num_trials (int): Number of times to corrupt data at each scale.
-        num_runs (int): Number of times to run each method on a corrupted data set.
-        run_rpca_condition (bool): Whether or not to run rpca (avoid timeout).
+    Kwargs:
+        titlesize (float): Title size.
+        textsize (float): Text size.
     """
-    pca = PCA(n_components=2)
-    pca.fit(data)
-    true_components = pca.components_
+    corruptions = ["sparse s&p", "uniform white", "normal white", "outliers"]
+    runtimes = [" pca_runtime", " epca_runtime", " rpca_runtime"]
+    methods = ["PCA", "EPCA", "RPCA"]
+    runtime_data = {"Runtime": [], "Method": [], "Dataset": []}
 
-    data_samples, _ = data.shape
+    for corruption in corruptions:
+        for trial_num in range(num_trials):
+            filenames = [
+                root_filename + str(trial_num) + ".txt"
+                for root_filename in root_filenames
+            ]
 
-    if sparse_noise_probs is None:
-        sparse_noise_probs = [0.01, 0.05, 0.10]
-    if sparse_noise_scales is None:
-        sparse_noise_scales = [0, 2, 5, 10]
+            for index, filename in enumerate(filenames):
+                try:
+                    df = pd.read_csv(filename, header=0, sep=";", index_col=False)
+                    for j, method in enumerate(methods):
+                        runtime_val = float(df[df["data"] == corruption][runtimes[j]])
 
-    # fig, axs = plt.subplots(2, 5, figsize=(25, 10))
-    pca_1_avgs = []
-    pca_2_avgs = []
+                        if not np.isnan(runtime_val):
+                            runtime_data["Runtime"].append(runtime_val)
+                            runtime_data["Method"].append(method)
+                            runtime_data["Dataset"].append(datasets[index])
 
-    epca_1_avgs = []
-    epca_2_avgs = []
+                        else:
+                            runtime_data["Runtime"].append(np.nan)
+                            runtime_data["Method"].append(method)
+                            runtime_data["Dataset"].append(datasets[index])
 
-    rpca_1_avgs = []
-    rpca_2_avgs = []
+                except:
+                    continue
 
-    for sp_scale in sparse_noise_scales:
-        for sp_prob in sparse_noise_probs:
-            epca_1 = []
-            epca_2 = []
+    df = pd.DataFrame(data=runtime_data)
 
-            pca_1 = []
-            pca_2 = []
+    fig, axs = plt.subplots(1, 1, figsize=(20, 15), sharey="col")
 
-            rpca_1 = []
-            rpca_2 = []
+    titlesize = kwargs.pop("titlesize", 30)
+    textsize = kwargs.pop("textsize", 25)
 
-            for _ in range(num_trials):
-                sp_data = add_sparse_noise(
-                    data=data, prob=sp_prob, num=np.max(data) * sp_scale
-                )
-                sp_data = sp_data.reshape((data_samples, -1))
+    sns.boxplot(data=df, x="Dataset", y="Runtime", hue="Method", width=0.80)
+    axs.tick_params(axis="x", which="major", labelsize=textsize)
 
-                pca_pcs, _, _ = run_pca(images=sp_data, num_components=2)
-                pca_map = match_components(true_components, pca_pcs)
-                pca_performance = score_performance(true_components, pca_pcs, pca_map)
-                pca_1.append(pca_performance[0])
-                pca_2.append(pca_performance[1])
+    axs.set_yscale("log")
+    axs.tick_params(axis="y", which="major", labelsize=textsize)
+    plt.legend(fontsize=textsize)
+    plt.title("Runtime Comparison", fontsize=titlesize)
+    plt.scatter([5.25], [120], marker="*", s=500, c="g")
+    axs.set_xlabel("Dataset", fontsize=textsize)
+    axs.set_ylabel("Runtime", fontsize=textsize)
 
-                if run_rpca_condition is True:
-                    rpca_pcs, _, _ = run_rpca(
-                        images=sp_data, num_components=2, reg_E=0.2
-                    )
-                    rpca_map = match_components(true_components, rpca_pcs)
-                    rpca_performance = score_performance(
-                        true_components, rpca_pcs, rpca_map
-                    )
-
-                    rpca_1.append(rpca_performance[0])
-                    rpca_2.append(rpca_performance[1])
-                else:
-                    rpca_1.append(0)
-                    rpca_2.append(0)
-
-                for _ in range(num_runs):
-                    epca_pcs, _, _ = run_epca(
-                        images=sp_data,
-                        num_components=2,
-                        num_bags=epca_dict.get("num_bags", 100),
-                        bag_size=epca_dict.get("bag_size", 20),
-                    )
-                    epca_map = match_components(true_components, epca_pcs)
-                    epca_performance = score_performance(
-                        true_components, epca_pcs, epca_map
-                    )
-
-                    epca_1.append(epca_performance[0])
-                    epca_2.append(epca_performance[1])
-
-            pca_1_avgs.append(np.average(pca_1))
-            pca_2_avgs.append(np.average(pca_2))
-
-            epca_1_avgs.append(np.average(epca_1))
-            epca_2_avgs.append(np.average(epca_2))
-
-            rpca_1_avgs.append(np.average(rpca_1))
-            rpca_2_avgs.append(np.average(rpca_2))
-
-    np.save(root_filepath + "pca_1", pca_1_avgs)
-    np.save(root_filepath + "pca_2", pca_2_avgs)
-    np.save(root_filepath + "epca_1", epca_1_avgs)
-    np.save(root_filepath + "epca_2", epca_2_avgs)
-    np.save(root_filepath + "rpca_1", rpca_1_avgs)
-    np.save(root_filepath + "rpca_2", rpca_2_avgs)
-
-    return (
-        pca_1_avgs,
-        pca_2_avgs,
-        epca_1_avgs,
-        epca_2_avgs,
-        rpca_1_avgs,
-        rpca_2_avgs,
+    blue_patch = mpatches.Patch(color="tab:blue", label="PCA")
+    orange_patch = mpatches.Patch(color="tab:orange", label="EPCA")
+    green_patch = mpatches.Patch(color="tab:green", label="RPCA")
+    star = mlines.Line2D(
+        [], [], color="k", marker="*", linestyle="None", markersize=20, label="Timeout"
     )
+    plt.legend(
+        handles=[blue_patch, orange_patch, green_patch, star],
+        loc="upper left",
+        fontsize=textsize,
+    )
+
+    [axs.axvline(x + 0.5, color="grey") for x in axs.get_xticks()]
+
+    plt.savefig(filepath + ".eps", format="eps", bbox_inches="tight")
+
+    plt.show()
+
+    return fig

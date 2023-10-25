@@ -4,7 +4,6 @@ from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.metrics import pairwise_distances
 from sklearn.cluster import KMeans
 from sklearn.cluster import DBSCAN
-from rtkm import RTKM
 from collections import Counter
 from scipy.signal import savgol_filter
 from typing import Tuple, List
@@ -12,8 +11,6 @@ from multiprocessing import Pool, Process
 
 from sklearn.metrics.pairwise import euclidean_distances
 from sklearn.preprocessing import KernelCenterer
-
-from rtkm import RTKM
 
 
 class RPCA_3:
