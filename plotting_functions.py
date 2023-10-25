@@ -10,7 +10,7 @@ import seaborn as sns
 import pandas as pd
 import matplotlib.pyplot as plt
 from EPCA.EPCA import EPCA
-from helper_functions import (
+from EPCA.helper_functions import (
     match_components,
     run_epca,
     run_pca,
