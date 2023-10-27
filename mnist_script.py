@@ -18,17 +18,17 @@ if __name__ == "__main__":
         # Define parameters for EPCA, PCA, and RPCA.
         pca_args = {}
         epca_args = {
-            "original": {"num_samples": 100, "sample_size": 100},
-            "sparse": {"num_samples": 100, "sample_size": 100},
+            "original": {"num_bags": 100, "bag_size": 100},
+            "sparse": {"num_bags": 100, "bag_size": 100},
             "uniform white": {
-                "num_samples": 100,
-                "sample_size": 100,
+                "num_bags": 100,
+                "bag_size": 100,
             },
             "normal white": {
-                "num_samples": 100,
-                "sample_size": 100,
+                "num_bags": 100,
+                "bag_size": 100,
             },
-            "outliers": {"num_samples": 100, "sample_size": 20},
+            "outliers": {"num_bags": 100, "bag_size": 20},
         }
         rpca_args = {"reg_E": 0.2}
 

@@ -22,24 +22,24 @@ if __name__ == "__main__":
 
         epca_args = {
             "original": {
-                "num_samples": 100,
-                "sample_size": max(5, n // 10),
+                "num_bags": 100,
+                "bag_size": max(5, n // 10),
             },
             "sparse": {
-                "num_samples": 100,
-                "sample_size": max(5, n // 10),
+                "num_bags": 100,
+                "bag_size": max(5, n // 10),
             },
             "uniform white": {
-                "num_samples": 100,
-                "sample_size": max(5, n // 10),
+                "num_bags": 100,
+                "bag_size": max(5, n // 10),
             },
             "normal white": {
-                "num_samples": 100,
-                "sample_size": max(5, n // 10),
+                "num_bags": 100,
+                "bag_size": max(5, n // 10),
             },
             "outliers": {
-                "num_samples": 100,
-                "sample_size": min(5, n // 10),
+                "num_bags": 100,
+                "bag_size": min(5, n // 10),
             },
         }
         rpca_args = {"reg_E": 0.2}

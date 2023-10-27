@@ -102,6 +102,10 @@ class EPCA:
             avg_explained_variance (np.ndarray): Average explained variance
                 associated with each of the EPCA mode clusters.
         """
+        assert (
+            self.signed_vectors is not None
+        ), "Clustering cannot be run before bagging procedure."
+
         kmeans = KMeans(n_clusters=2 * self.num_components, n_init=10).fit(
             self.signed_vectors
         )
@@ -152,6 +156,10 @@ class EPCA:
             centers[unique_labels]: The unique e.vectors
         """
         unique_labels = [0]
+
+        assert (
+            self.centers is not None
+        ), "Must run EPCA before unique vectors can be output."
 
         for index in range(1, self.num_components * 2):
             if np.any(

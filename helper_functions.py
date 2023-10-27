@@ -48,7 +48,7 @@ def create_noisy_datasets(
 
 def add_sparse_noise(data: np.ndarray, prob: float, num: float):
     """
-    Add salt and pepper noise to data
+    Add sparse noise to data
     Args:
         data (np.ndarray): Data
         prob (float): Probability of the noise
@@ -122,9 +122,11 @@ def add_white_noise(data: np.ndarray, variance: float, noise_type: str):
     return white_noise_data
 
 
-def match_components(true_components: np.ndarray, pred_components: np.ndarray) -> dict:
+def match_components(
+    true_components: List[np.ndarray], pred_components: List[np.ndarray]
+) -> dict:
     """
-    Match ture and predicted components to one another.
+    Match true and predicted components to one another.
 
     Args:
         true_components (np.ndarray): The true components.
@@ -147,7 +149,7 @@ def match_components(true_components: np.ndarray, pred_components: np.ndarray) -
     return pc_map
 
 
-def run_pca(images: np.ndarray, num_components: int):
+def run_pca(data: np.ndarray, num_components: int):
     """
     Run standard princpal component analysis on given data.
 
@@ -163,9 +165,14 @@ def run_pca(images: np.ndarray, num_components: int):
     """
     start_time = time.time()
 
-    assert len(images.shape) == 2, "Data must be 2D"
+    assert len(data.shape) == 2, "Data must be 2D"
+
+    assert (
+        num_components <= data.shape[1]
+    ), "Number of components must be less than or equal to dimension of data."
+
     pca = PCA(n_components=num_components)
-    pca.fit(images)
+    pca.fit(data)
 
     runtime = time.time() - start_time
 
@@ -209,7 +216,7 @@ def run_epca(
     return epca.centers, epca.avg_explained_variance, np.round(runtime, 3)
 
 
-def run_rpca(images: np.ndarray, num_components: int, **kwargs):
+def run_rpca(data: np.ndarray, num_components: int, **kwargs):
     """
     Run Robust PCA (RPCA).
 
@@ -222,13 +229,21 @@ def run_rpca(images: np.ndarray, num_components: int, **kwargs):
             associated with final components.
         runtime (float): Runtime of RPCA.
     """
+
+    assert len(data.shape) == 2, "Data must be 2D"
+
+    assert (
+        num_components <= data.shape[1]
+    ), "Number of components must be less than or equal to dimension of data."
+
     start_time = time.time()
     low_rank_part, _ = robust_pca(
-        X=images.astype(float),
+        X=data.astype(float),
         reg_E=kwargs.pop("reg_E", 1.0),
         reg_J=kwargs.pop("reg_J", 1.0),
         learning_rate=kwargs.pop("learning_rate", 1.1),
         n_iter_max=kwargs.pop("n_iter_max", 50),
+        return_errors=False,
     )
 
     runtime = time.time() - start_time

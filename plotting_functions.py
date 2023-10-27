@@ -1,14 +1,13 @@
 """Functions for generating figures."""
 
 from typing import List, Optional, Tuple
-from matplotlib.lines import Line2D
 import matplotlib.lines as mlines
 import matplotlib.patches as mpatches
 from matplotlib.gridspec import GridSpec
+import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns
 import pandas as pd
-import matplotlib.pyplot as plt
 from EPCA.EPCA import EPCA
 from helper_functions import (
     match_components,
@@ -117,8 +116,10 @@ def plot_epca_trials(
     axs[1, 2].tick_params(axis="x", which="major", labelsize=16)
 
     legend_elements = [
-        Line2D([0], [0], color="r", label="True Component"),
-        Line2D([0], [0], color="b", label="Avg. Predicted Component", linestyle="--"),
+        mlines.Line2D([0], [0], color="r", label="True Component"),
+        mlines.Line2D(
+            [0], [0], color="b", label="Avg. Predicted Component", linestyle="--"
+        ),
         mpatches.Patch(color="grey", label="95% CI"),
     ]
     axs[0, 2].legend(
@@ -182,7 +183,7 @@ def plot_compare_methods(
     ########## PCA ##########
     if pca_args is not None:
         final_pca, _, _ = run_pca(
-            images=input_data,
+            data=input_data,
             num_components=num_components,
         )
         pca_map = match_components(true_components, final_pca)
@@ -190,7 +191,7 @@ def plot_compare_methods(
     ######## RPCA ##############
     if rpca_args is not None:
         final_rpca, _, _ = run_rpca(
-            images=input_data,
+            data=input_data,
             num_components=num_components,
             reg_E=rpca_args.get("reg_E", 1.0),
             reg_J=rpca_args.get("reg_J", 1.0),

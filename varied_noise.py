@@ -2,10 +2,10 @@
 
 from typing import Optional, List
 from sklearn import datasets
+from sklearn.decomposition import PCA
 from scipy.io import netcdf
 from mnist import MNIST
 import numpy as np
-from sklearn.decomposition import PCA
 from helper_functions import (
     run_pca,
     run_rpca,
@@ -45,8 +45,6 @@ def outlier_comparison(
     pca.fit(data)
     true_components = pca.components_
 
-    data_samples, _ = data.shape
-
     if outlier_fractions is None:
         outlier_fractions = [0.01, 0.05, 0.10, 0.15, 0.20, 0.25]
     if outlier_scales is None:
@@ -80,7 +78,7 @@ def outlier_comparison(
                     outlier_scale=outlier_scale,
                 )
 
-                pca_pcs, _, _ = run_pca(images=outlier_data, num_components=2)
+                pca_pcs, _, _ = run_pca(data=outlier_data, num_components=2)
                 pca_map = match_components(true_components, pca_pcs)
                 pca_performance = score_performance(true_components, pca_pcs, pca_map)
                 pca_1.append(pca_performance[0])
@@ -88,7 +86,7 @@ def outlier_comparison(
 
                 if run_rpca_condition is True:
                     rpca_pcs, _, _ = run_rpca(
-                        images=outlier_data, num_components=2, reg_E=0.2
+                        data=outlier_data, num_components=2, reg_E=0.2
                     )
                     rpca_map = match_components(true_components, rpca_pcs)
                     rpca_performance = score_performance(
@@ -205,16 +203,14 @@ def sparse_noise_comparison(
                 )
                 sp_data = sp_data.reshape((data_samples, -1))
 
-                pca_pcs, _, _ = run_pca(images=sp_data, num_components=2)
+                pca_pcs, _, _ = run_pca(data=sp_data, num_components=2)
                 pca_map = match_components(true_components, pca_pcs)
                 pca_performance = score_performance(true_components, pca_pcs, pca_map)
                 pca_1.append(pca_performance[0])
                 pca_2.append(pca_performance[1])
 
                 if run_rpca_condition is True:
-                    rpca_pcs, _, _ = run_rpca(
-                        images=sp_data, num_components=2, reg_E=0.2
-                    )
+                    rpca_pcs, _, _ = run_rpca(data=sp_data, num_components=2, reg_E=0.2)
                     rpca_map = match_components(true_components, rpca_pcs)
                     rpca_performance = score_performance(
                         true_components, rpca_pcs, rpca_map
@@ -331,16 +327,14 @@ def white_noise_comparison(
                     data=data, variance=variance, noise_type="normal"
                 )
 
-            pca_pcs, _, _ = run_pca(images=white_data, num_components=2)
+            pca_pcs, _, _ = run_pca(data=white_data, num_components=2)
             pca_map = match_components(true_components, pca_pcs)
             pca_performance = score_performance(true_components, pca_pcs, pca_map)
             pca_1.append(pca_performance[0])
             pca_2.append(pca_performance[1])
 
             if run_rpca_condition is True:
-                rpca_pcs, _, _ = run_rpca(
-                    images=white_data, num_components=2, reg_E=0.2
-                )
+                rpca_pcs, _, _ = run_rpca(data=white_data, num_components=2, reg_E=0.2)
                 rpca_map = match_components(true_components, rpca_pcs)
                 rpca_performance = score_performance(
                     true_components, rpca_pcs, rpca_map
