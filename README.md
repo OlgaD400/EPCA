@@ -5,7 +5,7 @@ Efficient representations of data are essential for processing, exploration, and
 This repository implements Ensemble Principal Component Analysis (EPCA) and provides example notebooks to demonstrate the usage of the method. 
 
 ## Files 
-*EPCA/EPCA.py: Implementation of Ensemble Principal Component Analysis (EPCA).
+* EPCA/EPCA.py: Implementation of Ensemble Principal Component Analysis (EPCA).
 * helper_functions.py: Contains all functions for adding noise to datasets, running EPCA, PCA, and RPCA on said noisy data, and writing performance results to an output file.
 * plotting_functions.py: Contains all functions for generating figures from the results of various experiments.
 * tests/tests.py: Contains tests for EPCA.
