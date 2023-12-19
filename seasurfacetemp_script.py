@@ -35,7 +35,7 @@ if __name__ == "__main__":
             "bag_size": 20,
         },
     }
-    rpca_args = {}
+    rpca_args = {"reg_E": 0.2}
     pca_args = {}
     NUM_TRIALS = 100
 

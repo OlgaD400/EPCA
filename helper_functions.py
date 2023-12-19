@@ -154,7 +154,7 @@ def run_pca(data: np.ndarray, num_components: int):
     Run standard princpal component analysis on given data.
 
     Args:
-        images (np.ndarray): Data.
+        data (np.ndarray): Data.
         num_components (int): Number of components to compare against
     Returns
         final_components (np.ndarray): Predicted components stacked along
@@ -195,7 +195,7 @@ def run_epca(
     Run ensemble PCA.
 
     Args:
-        images (np.ndarray): Data.
+        data (np.ndarray): Data.
         num_samples (int): Number of data bags to create.
         sample_size (int): Number of data samples in each of the bags.
     Returns
@@ -243,7 +243,6 @@ def run_rpca(data: np.ndarray, num_components: int, **kwargs):
         reg_J=kwargs.pop("reg_J", 1.0),
         learning_rate=kwargs.pop("learning_rate", 1.1),
         n_iter_max=kwargs.pop("n_iter_max", 50),
-        return_errors=False,
     )
 
     runtime = time.time() - start_time
@@ -325,7 +324,7 @@ def run_all_pca_methods(
         res1 = pool.apply_async(
             run_pca,
             kwds={
-                "images": data,
+                "data": data,
                 "num_components": num_components,
             },
         )
@@ -346,7 +345,7 @@ def run_all_pca_methods(
         res2 = pool.apply_async(
             run_epca,
             kwds={
-                "images": data,
+                "data": data,
                 "num_components": num_components,
                 "num_bags": epca_args.get("num_bags", 100),
                 "bag_size": epca_args.get("bag_size", 10),
@@ -369,7 +368,7 @@ def run_all_pca_methods(
         res3 = pool.apply_async(
             run_rpca,
             kwds={
-                "images": data,
+                "data": data,
                 "num_components": num_components,
                 "reg_E": rpca_args.get("reg_E", 1.0),
                 "reg_J": rpca_args.get("reg_J", 1.0),

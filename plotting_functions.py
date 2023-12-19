@@ -200,7 +200,7 @@ def plot_compare_methods(
         )
         rpca_map = match_components(true_components, final_rpca)
 
-    fig, axs = plt.subplots(1, 2, figsize=(15, 5), sharey=True)
+    fig, axs = plt.subplots(1, num_components, figsize=(15, 5), sharey=True)
 
     for index in range(num_components):
         axs[index].plot(true_components[index], c="r", label="True")
@@ -227,7 +227,7 @@ def plot_compare_methods(
         axs[index].legend()
         axs[1].yaxis.set_tick_params(labelbottom=True)
 
-    return fig
+    return fig, axs
 
 
 def plot_varied_levels_noise(
